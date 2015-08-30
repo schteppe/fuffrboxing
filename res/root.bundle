@@ -1,0 +1,4471 @@
+{
+  "0867988e8eef40169b76d38661f07267.entity": {
+    "_readOnly": false,
+    "components": {
+      "meshData": {
+        "meshRef": "c1157f78fe224b7b9fc84c87bfbd3dd7.mesh"
+      },
+      "meshRenderer": {
+        "castShadows": true,
+        "cullMode": "Dynamic",
+        "materials": {
+          "b849b38363694acbb6952d4bc906ae7d.material": {
+            "materialRef": "b849b38363694acbb6952d4bc906ae7d.material",
+            "sortValue": 0
+          }
+        },
+        "receiveShadows": true,
+        "reflectable": true
+      },
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          0,
+          32.097869873046875,
+          0
+        ]
+      }
+    },
+    "created": "2015-05-08T12:46:46.169891+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "hidden": false,
+    "id": "0867988e8eef40169b76d38661f07267.entity",
+    "license": "CC0",
+    "modified": "2015-05-08T12:46:46.169891+00:00",
+    "name": "Ring",
+    "static": false,
+    "tags": {}
+  },
+  "0a727cba42304d799d3ed7d520905a1d.script": {
+    "_readOnly": false,
+    "body": "var lightEntity;\r\nvar flares = [];\r\nvar world;\r\nvar isActive;\r\nvar quadData;\r\nvar lightColor;\r\nvar globalIntensity;\r\nvar spriteTxSize = 64;\r\nvar flareGeometry;\r\nvar textures = {};\r\n\r\nvar textureShapes = {\r\n\tsplash: { trailStartRadius: 25, trailEndRadius: 0},\r\n\tring: [\r\n\t\t{ fraction: 0.00, value: 0 },\r\n\t\t{ fraction: 0.70, value: 0 },\r\n\t\t{ fraction: 0.92, value: 1 },\r\n\t\t{ fraction: 0.98, value: 0 }\r\n\t],\r\n\tdot: [\r\n\t\t{ fraction: 0.00, value: 1 },\r\n\t\t{ fraction: 0.30, value: 0.75 },\r\n\t\t{ fraction: 0.50, value: 0.45 },\r\n\t\t{ fraction: 0.65, value: 0.21 },\r\n\t\t{ fraction: 0.75, value: 0.1 },\r\n\t\t{ fraction: 0.98, value: 0 }\r\n\t],\r\n\tbell: [\r\n\t\t{ fraction: 0.00, value: 1 },\r\n\t\t{ fraction: 0.15, value: 0.75 },\r\n\t\t{ fraction: 0.30, value: 0.5 },\r\n\t\t{ fraction: 0.40, value: 0.25 },\r\n\t\t{ fraction: 0.75, value: 0.05 },\r\n\t\t{ fraction: 0.98, value: 0 }\r\n\t],\r\n\tnone: [\r\n\t\t{ fraction: 0, value: 1 },\r\n\t\t{ fraction: 1, value: 0 }\r\n\t]\r\n};\r\n\r\nfunction generateTextures(txSize) {\r\n\ttextures.size = txSize;\r\n\ttextures.splash = goo.ParticleSystemUtils.createSplashTexture(512, { trailStartRadius: 25, trailEndRadius: 0 });\r\n\ttextures.ring = goo.ParticleSystemUtils.createFlareTexture(txSize, { steps: textureShapes.ring, startRadius: txSize / 4, endRadius: txSize / 2 });\r\n\ttextures.dot = goo.ParticleSystemUtils.createFlareTexture(txSize, { steps: textureShapes.dot, startRadius: 0, endRadius: txSize / 2 });\r\n\ttextures.bell = goo.ParticleSystemUtils.createFlareTexture(txSize, { steps: textureShapes.bell, startRadius: 0, endRadius: txSize / 2 });\r\n\ttextures['default'] = goo.ParticleSystemUtils.createFlareTexture(txSize, { steps: textureShapes.none, startRadius: 0, endRadius: txSize / 2 });\r\n}\r\n\r\nfunction createFlareQuads(quads, lightColor, systemScale, edgeDampen, edgeScaling) {\r\n\tfor (var i = 0; i < quads.length; i++) {\r\n\t\tvar quad = quads[i];\r\n\t\tflares.push(\r\n\t\t\tnew FlareQuad(\r\n\t\t\t\tlightColor,\r\n\t\t\t\tquad.tx,\r\n\t\t\t\tquad.displace,\r\n\t\t\t\tquad.size,\r\n\t\t\t\t\tquad.intensity * globalIntensity,\r\n\t\t\t\tsystemScale,\r\n\t\t\t\tedgeDampen,\r\n\t\t\t\tedgeScaling,\r\n\t\t\t\ttextures,\r\n\t\t\t\tworld\r\n\t\t\t)\r\n\t\t);\r\n\t}\r\n\treturn flares;\r\n}\r\n\r\nfunction removeFlareQuads(quads) {\r\n\tfor (var i = 0; i < quads.length; i++) {\r\n\t\tquads[i].quad.removeFromWorld();\r\n\t}\r\n}\r\n\r\nvar goo;\r\nfunction setup(args, ctx, _goo) {\r\n\tgoo = _goo;\r\n\r\n\tglobalIntensity = args.intensity;\r\n\tflareGeometry = new FlareGeometry(args.edgeRelevance * 100);\r\n\tvar baseSize = spriteTxSize;\r\n\tif (args.highRes) {\r\n\t\tbaseSize *= 4;\r\n\t}\r\n\tif (textures.size !== baseSize) {\r\n\t\tgenerateTextures(baseSize);\r\n\t}\r\n\tflares = [];\r\n\tlightEntity = ctx.entity;\r\n\r\n\tworld = ctx.world;\r\n\tisActive = false;\r\n\r\n\tlightColor = [args.color[0], args.color[1], args.color[2], 1];\r\n\r\n\tquadData = [\r\n\t\t{ size: 2.53, tx: 'bell', intensity: 0.70, displace:  1    },\r\n\t\t{ size: 0.53, tx: 'dot',  intensity: 0.70, displace:  1    },\r\n\t\t{ size: 0.83, tx: 'bell', intensity: 0.20, displace:  0.8  },\r\n\t\t{ size: 0.40, tx: 'ring', intensity: 0.10, displace:  0.6  },\r\n\t\t{ size: 0.30, tx: 'bell', intensity: 0.10, displace:  0.4  },\r\n\t\t{ size: 0.60, tx: 'bell', intensity: 0.10, displace:  0.3  },\r\n\t\t{ size: 0.30, tx: 'dot',  intensity: 0.10, displace:  0.15 },\r\n\t\t{ size: 0.22, tx: 'ring', intensity: 0.03, displace: -0.25 },\r\n\t\t{ size: 0.36, tx: 'dot',  intensity: 0.05, displace: -0.5  },\r\n\t\t{ size: 0.80, tx: 'ring', intensity: 0.10, displace: -0.8  },\r\n\t\t{ size: 0.86, tx: 'bell', intensity: 0.20, displace: -1.1  },\r\n\t\t{ size: 1.30, tx: 'ring', intensity: 0.05, displace: -1.5  }\r\n\t];\r\n}\r\n\r\nfunction cleanup(args, ctx, goo) {\r\n\tremoveFlareQuads(flares);\r\n\tflares = [];\r\n}\r\n\r\nfunction update(args, ctx, goo) {\r\n\tif (ctx.entity.isVisible !== false) {\r\n\t\tflareGeometry.updateFrameGeometry(lightEntity, ctx.activeCameraEntity);\r\n\t\tif (!isActive) {\r\n\t\t\tflares = createFlareQuads(quadData, lightColor, args.scale, args.edgeDampen, args.edgeScaling);\r\n\t\t\tisActive = true;\r\n\t\t}\r\n\r\n\t\tfor (var i = 0; i < flares.length; i++) {\r\n\t\t\tflares[i].updatePosition(flareGeometry);\r\n\t\t}\r\n\t} else {\r\n\t\tif (isActive) {\r\n\t\t\tremoveFlareQuads(flares);\r\n\t\t\tisActive = false;\r\n\t\t}\r\n\t}\r\n}\r\n\r\n\r\n\r\n\tvar parameters = [{\r\n\t\t\tkey: 'scale',\r\n\t\t\tname: 'Scale',\r\n\t\t\ttype: 'float',\r\n\t\t\tdescription: 'Scale of flare quads',\r\n\t\t\tcontrol: 'slider',\r\n\t\t\t'default': 1,\r\n\t\t\tmin: 0.01,\r\n\t\t\tmax: 2\r\n\t\t}, {\r\n\t\t\tkey: 'intensity',\r\n\t\t\tname: 'Intensity',\r\n\t\t\ttype: 'float',\r\n\t\t\tdescription: 'Intensity of Effect',\r\n\t\t\tcontrol: 'slider',\r\n\t\t\t'default': 1,\r\n\t\t\tmin: 0.01,\r\n\t\t\tmax: 2\r\n\t\t}, {\r\n\t\t\tkey: 'edgeRelevance',\r\n\t\t\tname: 'Edge Relevance',\r\n\t\t\ttype: 'float',\r\n\t\t\tdescription: 'How much the effect cares about being centered or not',\r\n\t\t\tcontrol: 'slider',\r\n\t\t\t'default': 0,\r\n\t\t\tmin: 0,\r\n\t\t\tmax: 2\r\n\t\t}, {\r\n\t\t\tkey: 'edgeDampen',\r\n\t\t\tname: 'Edge Dampening',\r\n\t\t\ttype: 'float',\r\n\t\t\tdescription: 'Intensity adjustment by distance from center',\r\n\t\t\tcontrol: 'slider',\r\n\t\t\t'default': 0.2,\r\n\t\t\tmin: 0,\r\n\t\t\tmax: 1\r\n\t\t}, {\r\n\t\t\tkey: 'edgeScaling',\r\n\t\t\tname: 'Edge Scaling',\r\n\t\t\ttype: 'float',\r\n\t\t\tdescription: 'Scale adjustment by distance from center',\r\n\t\t\tcontrol: 'slider',\r\n\t\t\t'default': 0,\r\n\t\t\tmin: -2,\r\n\t\t\tmax: 2\r\n\t\t}, {\r\n\t\t\tkey: 'color',\r\n\t\t\tname: 'Color',\r\n\t\t\ttype: 'vec3',\r\n\t\t\tdescription: 'Effect Color',\r\n\t\t\tcontrol: 'color',\r\n\t\t\t'default': [\r\n\t\t\t\t0.8,\r\n\t\t\t\t0.75,\r\n\t\t\t\t0.7\r\n\t\t\t]\r\n\t\t}, {\r\n\t\t\tkey: 'highRes',\r\n\t\t\tname: 'High Resolution',\r\n\t\t\ttype: 'boolean',\r\n\t\t\tdescription: 'Intensity of Effect',\r\n\t\t\tcontrol: 'checkbox',\r\n\t\t\t'default': false\r\n\t\t}];\r\n\r\n\r\n\tfunction FlareGeometry(edgeRelevance) {\r\n\t\tthis.camRot = null;\r\n\t\tthis.distance = 0;\r\n\t\tthis.offset = 0;\r\n\t\tthis.centerRatio = 0;\r\n\t\tthis.positionVector = new goo.Vector3();\r\n\t\tthis.distanceVector = new goo.Vector3();\r\n\t\tthis.centerVector = new goo.Vector3();\r\n\t\tthis.displacementVector = new goo.Vector3();\r\n\t\tthis.edgeRelevance = edgeRelevance;\r\n\t}\r\n\r\n\tFlareGeometry.prototype.updateFrameGeometry = function (lightEntity, cameraEntity) {\r\n\t\tthis.camRot = cameraEntity.transformComponent.transform.rotation;\r\n\t\tthis.centerVector.set(cameraEntity.cameraComponent.camera.translation);\r\n\t\tthis.displacementVector.set(lightEntity.getTranslation());\r\n\t\tthis.displacementVector.sub(this.centerVector);\r\n\t\tthis.distance = this.displacementVector.length();\r\n\t\tthis.distanceVector.set(0, 0, -this.distance);\r\n\t\tthis.camRot.applyPost(this.distanceVector);\r\n\t\tthis.centerVector.add(this.distanceVector);\r\n\t\tthis.positionVector.set(this.centerVector);\r\n\t\tthis.displacementVector.set(lightEntity.getTranslation());\r\n\t\tthis.displacementVector.sub(this.positionVector);\r\n\t\tthis.offset = this.displacementVector.length();\r\n\t\tvar positionVectorLength = this.positionVector.length();\r\n\t\tif (positionVectorLength) {\r\n\t\t\tthis.centerRatio = 1 - (this.offset * this.edgeRelevance) / this.positionVector.length();\r\n\t\t} else {\r\n\t\t\tthis.centerRatio = 1 - (this.offset * this.edgeRelevance);\r\n\t\t}\r\n\t\tthis.centerRatio = Math.max(0, this.centerRatio);\r\n\t};\r\n\r\n\tfunction FlareQuad(lightColor, tx, displace, size, intensity, systemScale, edgeDampen, edgeScaling, textures, world) {\r\n\t\tthis.sizeVector = new goo.Vector3(size, size, size);\r\n\t\tthis.sizeVector.mul(systemScale);\r\n\t\tthis.positionVector = new goo.Vector3();\r\n\t\tthis.flareVector = new goo.Vector3();\r\n\t\tthis.intensity = intensity;\r\n\t\tthis.displace = displace;\r\n\t\tthis.color = [lightColor[0] * intensity, lightColor[1] * intensity, lightColor[2] * intensity, 1];\r\n\t\tthis.edgeDampen = edgeDampen;\r\n\t\tthis.edgeScaling = edgeScaling;\r\n\t\tvar material = new goo.Material(goo.ShaderLib.uber, 'flareShader');\r\n\r\n\t\tmaterial.uniforms.materialEmissive = this.color;\r\n\t\tmaterial.uniforms.materialDiffuse = [0, 0, 0, 1];\r\n\t\tmaterial.uniforms.materialAmbient = [0, 0, 0, 1];\r\n\t\tmaterial.uniforms.materialSpecular = [0, 0, 0, 1];\r\n\r\n\t\tvar texture = textures[tx];\r\n\r\n\t\tmaterial.setTexture('DIFFUSE_MAP', texture);\r\n\t\tmaterial.setTexture('EMISSIVE_MAP', texture);\r\n\t\tmaterial.blendState.blending = 'AdditiveBlending';\r\n\t\tmaterial.blendState.blendEquation = 'AddEquation';\r\n\t\tmaterial.blendState.blendSrc = 'OneFactor';\r\n\t\tmaterial.blendState.blendDst = 'OneFactor';\r\n\t\tmaterial.depthState.enabled = false;\r\n\t\tmaterial.depthState.write = false;\r\n\t\tmaterial.cullState.enabled = false;\r\n\r\n\t\tvar meshData = new goo.Quad(1, 1);\r\n\t\tvar entity = world.createEntity(meshData, material);\r\n\t\tentity.meshRendererComponent.cullMode = 'Never';\r\n\t\tentity.addToWorld();\r\n\r\n\t\tthis.material = material;\r\n\t\tthis.quad = entity;\r\n\t}\r\n\r\n\tFlareQuad.prototype.updatePosition = function (flareGeometry) {\r\n\t\tthis.flareVector.set(flareGeometry.displacementVector);\r\n\t\tthis.positionVector.set(flareGeometry.positionVector);\r\n\t\tthis.flareVector.mul(this.displace);\r\n\t\tthis.positionVector.add(this.flareVector);\r\n\r\n\t\tthis.material.uniforms.materialEmissive = [\r\n\t\t\t\tthis.color[0] * flareGeometry.centerRatio * this.edgeDampen,\r\n\t\t\t\tthis.color[1] * flareGeometry.centerRatio * this.edgeDampen,\r\n\t\t\t\tthis.color[2] * flareGeometry.centerRatio * this.edgeDampen,\r\n\t\t\t1\r\n\t\t];\r\n\r\n\t\tvar scaleFactor = flareGeometry.distance + flareGeometry.distance * flareGeometry.centerRatio * this.edgeScaling;\r\n\r\n\t\tvar quadTransform = this.quad.transformComponent.transform;\r\n\t\tquadTransform.scale.set(this.sizeVector);\r\n\t\tquadTransform.scale.mul(scaleFactor);\r\n\t\tquadTransform.rotation.set(flareGeometry.camRot);\r\n\t\tquadTransform.translation.set(this.positionVector);\r\n\t\tthis.quad.transformComponent.updateTransform();\r\n\t\tthis.quad.transformComponent.updateWorldTransform();\r\n\t};",
+    "created": "2015-05-08T12:46:43.588587+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "dependencies": {},
+    "id": "0a727cba42304d799d3ed7d520905a1d.script",
+    "license": "CC0",
+    "modified": "2015-05-08T12:46:43.588587+00:00",
+    "name": "lens 2"
+  },
+  "0db7ef65f3b74241b91edc9512b34ed2.script": {
+    "_readOnly": false,
+    "body": "var lightEntity;\nvar flares = [];\nvar world;\nvar isActive;\nvar quadData;\nvar lightColor;\nvar globalIntensity;\nvar spriteTxSize = 64;\nvar flareGeometry;\nvar textures = {};\n\nvar textureShapes = {\n\tsplash: { trailStartRadius: 25, trailEndRadius: 0},\n\tring: [\n\t\t{ fraction: 0.00, value: 0 },\n\t\t{ fraction: 0.70, value: 0 },\n\t\t{ fraction: 0.92, value: 1 },\n\t\t{ fraction: 0.98, value: 0 }\n\t],\n\tdot: [\n\t\t{ fraction: 0.00, value: 1 },\n\t\t{ fraction: 0.30, value: 0.75 },\n\t\t{ fraction: 0.50, value: 0.45 },\n\t\t{ fraction: 0.65, value: 0.21 },\n\t\t{ fraction: 0.75, value: 0.1 },\n\t\t{ fraction: 0.98, value: 0 }\n\t],\n\tbell: [\n\t\t{ fraction: 0.00, value: 1 },\n\t\t{ fraction: 0.15, value: 0.75 },\n\t\t{ fraction: 0.30, value: 0.5 },\n\t\t{ fraction: 0.40, value: 0.25 },\n\t\t{ fraction: 0.75, value: 0.05 },\n\t\t{ fraction: 0.98, value: 0 }\n\t],\n\tnone: [\n\t\t{ fraction: 0, value: 1 },\n\t\t{ fraction: 1, value: 0 }\n\t]\n};\n\nfunction generateTextures(txSize) {\n\ttextures.size = txSize;\n\ttextures.splash = goo.ParticleSystemUtils.createSplashTexture(512, { trailStartRadius: 25, trailEndRadius: 0 });\n\ttextures.ring = goo.ParticleSystemUtils.createFlareTexture(txSize, { steps: textureShapes.ring, startRadius: txSize / 4, endRadius: txSize / 2 });\n\ttextures.dot = goo.ParticleSystemUtils.createFlareTexture(txSize, { steps: textureShapes.dot, startRadius: 0, endRadius: txSize / 2 });\n\ttextures.bell = goo.ParticleSystemUtils.createFlareTexture(txSize, { steps: textureShapes.bell, startRadius: 0, endRadius: txSize / 2 });\n\ttextures['default'] = goo.ParticleSystemUtils.createFlareTexture(txSize, { steps: textureShapes.none, startRadius: 0, endRadius: txSize / 2 });\n}\n\nfunction createFlareQuads(quads, lightColor, systemScale, edgeDampen, edgeScaling) {\n\tfor (var i = 0; i < quads.length; i++) {\n\t\tvar quad = quads[i];\n\t\tflares.push(\n\t\t\tnew FlareQuad(\n\t\t\t\tlightColor,\n\t\t\t\tquad.tx,\n\t\t\t\tquad.displace,\n\t\t\t\tquad.size,\n\t\t\t\t\tquad.intensity * globalIntensity,\n\t\t\t\tsystemScale,\n\t\t\t\tedgeDampen,\n\t\t\t\tedgeScaling,\n\t\t\t\ttextures,\n\t\t\t\tworld\n\t\t\t)\n\t\t);\n\t}\n\treturn flares;\n}\n\nfunction removeFlareQuads(quads) {\n\tfor (var i = 0; i < quads.length; i++) {\n\t\tquads[i].quad.removeFromWorld();\n\t}\n}\n\nvar goo;\nfunction setup(args, ctx, _goo) {\n\tgoo = _goo;\n\n\tglobalIntensity = args.intensity;\n\tflareGeometry = new FlareGeometry(args.edgeRelevance * 100);\n\tvar baseSize = spriteTxSize;\n\tif (args.highRes) {\n\t\tbaseSize *= 4;\n\t}\n\tif (textures.size !== baseSize) {\n\t\tgenerateTextures(baseSize);\n\t}\n\tflares = [];\n\tlightEntity = ctx.entity;\n\n\tworld = ctx.world;\n\tisActive = false;\n\n\tlightColor = [args.color[0], args.color[1], args.color[2], 1];\n\n\tquadData = [\n\t\t{ size: 2.53, tx: 'bell', intensity: 0.70, displace:  1    },\n\t\t{ size: 0.53, tx: 'dot',  intensity: 0.70, displace:  1    },\n\t\t{ size: 0.83, tx: 'bell', intensity: 0.20, displace:  0.8  },\n\t\t{ size: 0.40, tx: 'ring', intensity: 0.10, displace:  0.6  },\n\t\t{ size: 0.30, tx: 'bell', intensity: 0.10, displace:  0.4  },\n\t\t{ size: 0.60, tx: 'bell', intensity: 0.10, displace:  0.3  },\n\t\t{ size: 0.30, tx: 'dot',  intensity: 0.10, displace:  0.15 },\n\t\t{ size: 0.22, tx: 'ring', intensity: 0.03, displace: -0.25 },\n\t\t{ size: 0.36, tx: 'dot',  intensity: 0.05, displace: -0.5  },\n\t\t{ size: 0.80, tx: 'ring', intensity: 0.10, displace: -0.8  },\n\t\t{ size: 0.86, tx: 'bell', intensity: 0.20, displace: -1.1  },\n\t\t{ size: 1.30, tx: 'ring', intensity: 0.05, displace: -1.5  }\n\t];\n}\n\nfunction cleanup(args, ctx, goo) {\n\tremoveFlareQuads(flares);\n\tflares = [];\n}\n\nfunction update(args, ctx, goo) {\n\tif (ctx.entity.isVisible !== false) {\n\t\tflareGeometry.updateFrameGeometry(lightEntity, ctx.activeCameraEntity);\n\t\tif (!isActive) {\n\t\t\tflares = createFlareQuads(quadData, lightColor, args.scale, args.edgeDampen, args.edgeScaling);\n\t\t\tisActive = true;\n\t\t}\n\n\t\tfor (var i = 0; i < flares.length; i++) {\n\t\t\tflares[i].updatePosition(flareGeometry);\n\t\t}\n\t} else {\n\t\tif (isActive) {\n\t\t\tremoveFlareQuads(flares);\n\t\t\tisActive = false;\n\t\t}\n\t}\n}\n\n\n\n\tvar parameters = [{\n\t\t\tkey: 'scale',\n\t\t\tname: 'Scale',\n\t\t\ttype: 'float',\n\t\t\tdescription: 'Scale of flare quads',\n\t\t\tcontrol: 'slider',\n\t\t\t'default': 1,\n\t\t\tmin: 0.01,\n\t\t\tmax: 2\n\t\t}, {\n\t\t\tkey: 'intensity',\n\t\t\tname: 'Intensity',\n\t\t\ttype: 'float',\n\t\t\tdescription: 'Intensity of Effect',\n\t\t\tcontrol: 'slider',\n\t\t\t'default': 1,\n\t\t\tmin: 0.01,\n\t\t\tmax: 2\n\t\t}, {\n\t\t\tkey: 'edgeRelevance',\n\t\t\tname: 'Edge Relevance',\n\t\t\ttype: 'float',\n\t\t\tdescription: 'How much the effect cares about being centered or not',\n\t\t\tcontrol: 'slider',\n\t\t\t'default': 0,\n\t\t\tmin: 0,\n\t\t\tmax: 2\n\t\t}, {\n\t\t\tkey: 'edgeDampen',\n\t\t\tname: 'Edge Dampening',\n\t\t\ttype: 'float',\n\t\t\tdescription: 'Intensity adjustment by distance from center',\n\t\t\tcontrol: 'slider',\n\t\t\t'default': 0.2,\n\t\t\tmin: 0,\n\t\t\tmax: 1\n\t\t}, {\n\t\t\tkey: 'edgeScaling',\n\t\t\tname: 'Edge Scaling',\n\t\t\ttype: 'float',\n\t\t\tdescription: 'Scale adjustment by distance from center',\n\t\t\tcontrol: 'slider',\n\t\t\t'default': 0,\n\t\t\tmin: -2,\n\t\t\tmax: 2\n\t\t}, {\n\t\t\tkey: 'color',\n\t\t\tname: 'Color',\n\t\t\ttype: 'vec3',\n\t\t\tdescription: 'Effect Color',\n\t\t\tcontrol: 'color',\n\t\t\t'default': [\n\t\t\t\t0.8,\n\t\t\t\t0.75,\n\t\t\t\t0.7\n\t\t\t]\n\t\t}, {\n\t\t\tkey: 'highRes',\n\t\t\tname: 'High Resolution',\n\t\t\ttype: 'boolean',\n\t\t\tdescription: 'Intensity of Effect',\n\t\t\tcontrol: 'checkbox',\n\t\t\t'default': false\n\t\t}];\n\n\n\tfunction FlareGeometry(edgeRelevance) {\n\t\tthis.camRot = null;\n\t\tthis.distance = 0;\n\t\tthis.offset = 0;\n\t\tthis.centerRatio = 0;\n\t\tthis.positionVector = new goo.Vector3();\n\t\tthis.distanceVector = new goo.Vector3();\n\t\tthis.centerVector = new goo.Vector3();\n\t\tthis.displacementVector = new goo.Vector3();\n\t\tthis.edgeRelevance = edgeRelevance;\n\t}\n\n\tFlareGeometry.prototype.updateFrameGeometry = function (lightEntity, cameraEntity) {\n\t\tthis.camRot = cameraEntity.transformComponent.transform.rotation;\n\t\tthis.centerVector.set(cameraEntity.cameraComponent.camera.translation);\n\t\tthis.displacementVector.set(lightEntity.getTranslation());\n\t\tthis.displacementVector.sub(this.centerVector);\n\t\tthis.distance = this.displacementVector.length();\n\t\tthis.distanceVector.set(0, 0, -this.distance);\n\t\tthis.camRot.applyPost(this.distanceVector);\n\t\tthis.centerVector.add(this.distanceVector);\n\t\tthis.positionVector.set(this.centerVector);\n\t\tthis.displacementVector.set(lightEntity.getTranslation());\n\t\tthis.displacementVector.sub(this.positionVector);\n\t\tthis.offset = this.displacementVector.length();\n\t\tvar positionVectorLength = this.positionVector.length();\n\t\tif (positionVectorLength) {\n\t\t\tthis.centerRatio = 1 - (this.offset * this.edgeRelevance) / this.positionVector.length();\n\t\t} else {\n\t\t\tthis.centerRatio = 1 - (this.offset * this.edgeRelevance);\n\t\t}\n\t\tthis.centerRatio = Math.max(0, this.centerRatio);\n\t};\n\n\tfunction FlareQuad(lightColor, tx, displace, size, intensity, systemScale, edgeDampen, edgeScaling, textures, world) {\n\t\tthis.sizeVector = new goo.Vector3(size, size, size);\n\t\tthis.sizeVector.mul(systemScale);\n\t\tthis.positionVector = new goo.Vector3();\n\t\tthis.flareVector = new goo.Vector3();\n\t\tthis.intensity = intensity;\n\t\tthis.displace = displace;\n\t\tthis.color = [lightColor[0] * intensity, lightColor[1] * intensity, lightColor[2] * intensity, 1];\n\t\tthis.edgeDampen = edgeDampen;\n\t\tthis.edgeScaling = edgeScaling;\n\t\tvar material = new goo.Material(goo.ShaderLib.uber, 'flareShader');\n\n\t\tmaterial.uniforms.materialEmissive = this.color;\n\t\tmaterial.uniforms.materialDiffuse = [0, 0, 0, 1];\n\t\tmaterial.uniforms.materialAmbient = [0, 0, 0, 1];\n\t\tmaterial.uniforms.materialSpecular = [0, 0, 0, 1];\n\n\t\tvar texture = textures[tx];\n\n\t\tmaterial.setTexture('DIFFUSE_MAP', texture);\n\t\tmaterial.setTexture('EMISSIVE_MAP', texture);\n\t\tmaterial.blendState.blending = 'AdditiveBlending';\n\t\tmaterial.blendState.blendEquation = 'AddEquation';\n\t\tmaterial.blendState.blendSrc = 'OneFactor';\n\t\tmaterial.blendState.blendDst = 'OneFactor';\n\t\tmaterial.depthState.enabled = false;\n\t\tmaterial.depthState.write = false;\n\t\tmaterial.cullState.enabled = false;\n\n\t\tvar meshData = new goo.Quad(1, 1);\n\t\tvar entity = world.createEntity(meshData, material);\n\t\tentity.meshRendererComponent.cullMode = 'Never';\n\t\tentity.addToWorld();\n\n\t\tthis.material = material;\n\t\tthis.quad = entity;\n\t}\n\n\tFlareQuad.prototype.updatePosition = function (flareGeometry) {\n\t\tthis.flareVector.set(flareGeometry.displacementVector);\n\t\tthis.positionVector.set(flareGeometry.positionVector);\n\t\tthis.flareVector.mul(this.displace);\n\t\tthis.positionVector.add(this.flareVector);\n\n\t\tthis.material.uniforms.materialEmissive = [\n\t\t\t\tthis.color[0] * flareGeometry.centerRatio * this.edgeDampen,\n\t\t\t\tthis.color[1] * flareGeometry.centerRatio * this.edgeDampen,\n\t\t\t\tthis.color[2] * flareGeometry.centerRatio * this.edgeDampen,\n\t\t\t1\n\t\t];\n\n\t\tvar scaleFactor = flareGeometry.distance + flareGeometry.distance * flareGeometry.centerRatio * this.edgeScaling;\n\n\t\tvar quadTransform = this.quad.transformComponent.transform;\n\t\tquadTransform.scale.set(this.sizeVector);\n\t\tquadTransform.scale.mul(scaleFactor);\n\t\tquadTransform.rotation.set(flareGeometry.camRot);\n\t\tquadTransform.translation.set(this.positionVector);\n\t\tthis.quad.transformComponent.updateTransform();\n\t\tthis.quad.transformComponent.updateWorldTransform();\n\t};",
+    "created": "2015-05-08T12:46:43.303048+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "dependencies": {},
+    "id": "0db7ef65f3b74241b91edc9512b34ed2.script",
+    "license": "CC0",
+    "modified": "2015-05-08T12:46:43.303048+00:00",
+    "name": "Lens Flare"
+  },
+  "16f2d7341bf44aaa8f4efaaa83ddc23c.entity": {
+    "_readOnly": false,
+    "components": {
+      "transform": {
+        "children": {
+          "5642f27410154b2a84088f43dab30bd6.entity": {
+            "entityRef": "5642f27410154b2a84088f43dab30bd6.entity",
+            "sortValue": 3
+          },
+          "b1df5981c13349dc9af0a7c067600178.entity": {
+            "entityRef": "b1df5981c13349dc9af0a7c067600178.entity",
+            "sortValue": 5
+          },
+          "f7e44d3e6f1c43ebb45d04b6d185bf1f.entity": {
+            "entityRef": "f7e44d3e6f1c43ebb45d04b6d185bf1f.entity",
+            "sortValue": 4
+          }
+        },
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.06128793582320213,
+          0.06128793582320213,
+          0.06128793582320213
+        ],
+        "translation": [
+          0,
+          -1.1506845951080322,
+          0
+        ]
+      }
+    },
+    "created": "2015-05-08T12:46:41.357799+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "hidden": false,
+    "id": "16f2d7341bf44aaa8f4efaaa83ddc23c.entity",
+    "license": "CC0",
+    "modified": "2015-05-08T12:46:41.357799+00:00",
+    "name": "ring_v2",
+    "static": false,
+    "tags": {}
+  },
+  "1792f1db381c4546b75edb5d1b93475e.texture": {
+    "_readOnly": false,
+    "anisotropy": 1,
+    "created": "2015-05-08T12:46:43.637676+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "flipY": true,
+    "generateMipmaps": true,
+    "id": "1792f1db381c4546b75edb5d1b93475e.texture",
+    "imageRef": "87bbd6f9ed1920b26112b47b5fa735e4e90aa880.jpg",
+    "license": "CC0",
+    "magFilter": "Bilinear",
+    "minFilter": "Trilinear",
+    "modified": "2015-05-08T12:46:43.637676+00:00",
+    "name": "07.jpg 3",
+    "offset": [
+      0,
+      0
+    ],
+    "repeat": [
+      1,
+      1
+    ],
+    "wrapS": "Repeat",
+    "wrapT": "Repeat"
+  },
+  "18ac4b0f87624c1e985537fdb3d6fe06.script": {
+    "_readOnly": false,
+    "body": "'use strict';\n\nvar setup = function(args, ctx, goo) {\n\n};\n\nvar cleanup = function(args, ctx, goo) {\n\n};\n\nvar update = function(args, ctx, goo) {\n\n};\n\nvar parameters = [{\n\ttype: 'string',\n\tkey: 'asd'\n}];",
+    "created": "2015-05-08T15:08:43.981Z",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "dependencies": {},
+    "id": "18ac4b0f87624c1e985537fdb3d6fe06.script",
+    "license": "CC0",
+    "modified": "2015-05-08T15:09:02.452381+00:00",
+    "name": "Custom script"
+  },
+  "19aa1d53783a45079f2258b343f2e394.entity": {
+    "_readOnly": false,
+    "components": {
+      "rigidBody": {
+        "angularDrag": 0,
+        "angularVelocity": [
+          0,
+          0,
+          0
+        ],
+        "isKinematic": true,
+        "linearDrag": 0,
+        "mass": 0,
+        "velocity": [
+          0,
+          0,
+          0
+        ]
+      },
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          0.2,
+          0,
+          -0.5
+        ]
+      }
+    },
+    "created": "2015-05-08T12:46:43.178575+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "hidden": false,
+    "id": "19aa1d53783a45079f2258b343f2e394.entity",
+    "license": "CC0",
+    "modified": "2015-05-08T12:46:43.178575+00:00",
+    "name": "ControlBody1",
+    "static": false,
+    "tags": {}
+  },
+  "19fc79c0e51549d8a986ca347a878963.entity": {
+    "_readOnly": false,
+    "components": {
+      "meshData": {
+        "meshRef": "f07b108cf27044aeb2db445bbb4ed4eb.mesh"
+      },
+      "meshRenderer": {
+        "castShadows": true,
+        "cullMode": "Dynamic",
+        "materials": {
+          "9db2243d302a43ffa171d0e265bca272.material": {
+            "materialRef": "9db2243d302a43ffa171d0e265bca272.material",
+            "sortValue": 0
+          }
+        },
+        "receiveShadows": true,
+        "reflectable": true
+      },
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          0,
+          32.097869873046875,
+          0
+        ]
+      }
+    },
+    "created": "2015-05-08T12:46:45.117680+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "hidden": false,
+    "id": "19fc79c0e51549d8a986ca347a878963.entity",
+    "license": "CC0",
+    "modified": "2015-05-08T12:46:45.117680+00:00",
+    "name": "rope",
+    "static": false,
+    "tags": {}
+  },
+  "21dfb89533024d37b103787eab587350.entity": {
+    "_readOnly": false,
+    "components": {
+      "rigidBody": {
+        "angularDrag": 0,
+        "angularVelocity": [
+          0,
+          0,
+          0
+        ],
+        "isKinematic": false,
+        "linearDrag": 0,
+        "mass": 1,
+        "velocity": [
+          0,
+          0,
+          0
+        ]
+      },
+      "transform": {
+        "children": {
+          "35600930e10d444b97dfc328160efa43.entity": {
+            "entityRef": "35600930e10d444b97dfc328160efa43.entity",
+            "sortValue": 0
+          },
+          "5a08d022f2324203b08e932fe5be0baf.entity": {
+            "entityRef": "5a08d022f2324203b08e932fe5be0baf.entity",
+            "sortValue": 1
+          }
+        },
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          -0.4,
+          0,
+          -1
+        ]
+      }
+    },
+    "created": "2015-05-08T12:46:43.073325+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "hidden": false,
+    "id": "21dfb89533024d37b103787eab587350.entity",
+    "license": "CC0",
+    "modified": "2015-05-08T12:46:43.073325+00:00",
+    "name": "Glove2",
+    "static": false,
+    "tags": {}
+  },
+  "220c1a160ecc40a1b11dcd1a5892f5db.material": {
+    "_readOnly": false,
+    "blendState": {
+      "blendDst": "OneMinusSrcAlphaFactor",
+      "blendEquation": "AddEquation",
+      "blendSrc": "SrcAlphaFactor",
+      "blending": "NoBlending"
+    },
+    "created": "2015-05-08T12:46:41.463008+00:00",
+    "cullState": {
+      "cullFace": "Back",
+      "enabled": true,
+      "frontFace": "CCW"
+    },
+    "dataModelVersion": 2,
+    "deleted": false,
+    "depthState": {
+      "enabled": true,
+      "write": true
+    },
+    "dualTransparency": false,
+    "flat": false,
+    "id": "220c1a160ecc40a1b11dcd1a5892f5db.material",
+    "license": "CC0",
+    "modified": "2015-05-08T12:46:41.463008+00:00",
+    "name": "rightgloveMat 3",
+    "renderQueue": -1,
+    "shaderRef": "GOO_ENGINE_SHADERS/uber",
+    "texturesMapping": {
+      "AO_MAP": {
+        "enabled": true,
+        "textureRef": "38f9b6f74c8d470ab6dc8c2dda3beffe.texture"
+      },
+      "DIFFUSE_MAP": {
+        "enabled": true,
+        "textureRef": "3b1decd0b57140219db837cd6d2d6a2b.texture"
+      },
+      "LOCAL_ENVIRONMENT": {
+        "enabled": true,
+        "textureRef": "4ebb408019d64204a7ee729a620cfc87.texture"
+      },
+      "REFLECTION_MAP": {
+        "enabled": true,
+        "textureRef": "e0c49bfee06f49fa9601ad30d73e1f0c.texture"
+      }
+    },
+    "uniforms": {
+      "discardThreshold": {
+        "enabled": true,
+        "value": 0.1
+      },
+      "etaRatio": {
+        "enabled": true,
+        "value": -0.5
+      },
+      "fresnel": {
+        "enabled": true,
+        "value": 0.29
+      },
+      "materialAmbient": {
+        "enabled": true,
+        "value": [
+          0.4291666666666667,
+          0.4291666666666667,
+          0.4291666666666667,
+          1
+        ]
+      },
+      "materialDiffuse": {
+        "enabled": true,
+        "value": [
+          1,
+          1,
+          1,
+          1
+        ]
+      },
+      "materialEmissive": {
+        "enabled": true,
+        "value": [
+          0,
+          0,
+          0,
+          1
+        ]
+      },
+      "materialSpecular": {
+        "enabled": true,
+        "value": [
+          0,
+          0,
+          0,
+          1
+        ]
+      },
+      "materialSpecularPower": {
+        "enabled": true,
+        "value": 1
+      },
+      "normalMultiplier": {
+        "enabled": true,
+        "value": 1
+      },
+      "opacity": {
+        "enabled": false,
+        "value": 1
+      },
+      "reflectivity": {
+        "enabled": true,
+        "value": 0.76
+      },
+      "refractivity": {
+        "enabled": false,
+        "value": 0
+      },
+      "vertexColorAmount": {
+        "enabled": true,
+        "value": 1
+      },
+      "wrapSettings": {
+        "enabled": true,
+        "value": [
+          0,
+          0
+        ]
+      }
+    },
+    "wireframe": false
+  },
+  "2301a4ed7e7e416d8ffa7d7f8fafe97e.texture": {
+    "_readOnly": false,
+    "anisotropy": 1,
+    "created": "2015-05-08T12:46:42.565203+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "flipY": true,
+    "generateMipmaps": true,
+    "id": "2301a4ed7e7e416d8ffa7d7f8fafe97e.texture",
+    "imageRef": "87bbd6f9ed1920b26112b47b5fa735e4e90aa880.jpg",
+    "license": "CC0",
+    "magFilter": "Bilinear",
+    "minFilter": "Trilinear",
+    "modified": "2015-05-08T12:46:42.565203+00:00",
+    "name": "07.jpg 2",
+    "offset": [
+      0,
+      0
+    ],
+    "repeat": [
+      1,
+      1
+    ],
+    "wrapS": "Repeat",
+    "wrapT": "Repeat"
+  },
+  "2920c85a8db542e793f31b52e9493adc.entity": {
+    "_readOnly": false,
+    "components": {
+      "meshData": {
+        "shape": "Cone",
+        "shapeOptions": {
+          "height": 1,
+          "radialSamples": 16,
+          "radius": 0.5
+        }
+      },
+      "meshRenderer": {
+        "castShadows": true,
+        "cullMode": "Dynamic",
+        "materials": {
+          "402a0516ec074b619bd8dfe252c6b3ca.material": {
+            "materialRef": "402a0516ec074b619bd8dfe252c6b3ca.material",
+            "sortValue": 0
+          }
+        },
+        "receiveShadows": true,
+        "reflectable": true
+      },
+      "script": {
+        "scripts": {
+          "e0504ca7c93949539b07efec120dc3c7.scriptInstance": {
+            "name": "Custom script",
+            "options": {
+              "color": [
+                0.8,
+                0.75,
+                0.7
+              ],
+              "edgeDampen": 0.45,
+              "edgeRelevance": 0,
+              "edgeScaling": 2,
+              "enabled": true,
+              "highRes": true,
+              "intensity": 1.05,
+              "scale": 0.27
+            },
+            "scriptRef": "0db7ef65f3b74241b91edc9512b34ed2.script",
+            "sortValue": 0
+          }
+        }
+      },
+      "transform": {
+        "rotation": [
+          159.86600069434942,
+          0,
+          0
+        ],
+        "scale": [
+          3.423882484436035,
+          3.423882484436035,
+          3.423882484436035
+        ],
+        "translation": [
+          2.9794225692749023,
+          2.8898563385009766,
+          5.521965503692627
+        ]
+      }
+    },
+    "created": "2015-05-08T12:46:45.229269+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "hidden": true,
+    "id": "2920c85a8db542e793f31b52e9493adc.entity",
+    "license": "CC0",
+    "modified": "2015-05-08T13:37:31.305185+00:00",
+    "name": "Flare2",
+    "static": false,
+    "tags": {}
+  },
+  "2b32a16860284d779fc82da18397ff96.material": {
+    "_readOnly": false,
+    "blendState": {
+      "blendDst": "OneMinusSrcAlphaFactor",
+      "blendEquation": "AddEquation",
+      "blendSrc": "SrcAlphaFactor",
+      "blending": "NoBlending"
+    },
+    "created": "2015-05-08T12:46:44.379266+00:00",
+    "cullState": {
+      "cullFace": "Back",
+      "enabled": true,
+      "frontFace": "CCW"
+    },
+    "dataModelVersion": 2,
+    "deleted": false,
+    "depthState": {
+      "enabled": true,
+      "write": true
+    },
+    "dualTransparency": false,
+    "flat": false,
+    "id": "2b32a16860284d779fc82da18397ff96.material",
+    "license": "CC0",
+    "modified": "2015-05-08T13:30:11.038774+00:00",
+    "name": "Material",
+    "renderQueue": -1,
+    "shaderRef": "GOO_ENGINE_SHADERS/uber",
+    "texturesMapping": {},
+    "uniforms": {
+      "discardThreshold": {
+        "enabled": true,
+        "value": 0.1
+      },
+      "etaRatio": {
+        "enabled": true,
+        "value": -0.5
+      },
+      "fresnel": {
+        "enabled": true,
+        "value": 0
+      },
+      "materialAmbient": {
+        "enabled": true,
+        "value": [
+          0.18333333333333335,
+          0.18333333333333335,
+          0.18333333333333335,
+          1
+        ]
+      },
+      "materialDiffuse": {
+        "enabled": true,
+        "value": [
+          0.4375,
+          0.4375,
+          0.4375,
+          1
+        ]
+      },
+      "materialEmissive": {
+        "enabled": true,
+        "value": [
+          0,
+          0,
+          0,
+          1
+        ]
+      },
+      "materialSpecular": {
+        "enabled": true,
+        "value": [
+          0.4041666666666667,
+          0.4041666666666667,
+          0.4041666666666667,
+          1
+        ]
+      },
+      "materialSpecularPower": {
+        "enabled": true,
+        "value": 16.07
+      },
+      "normalMultiplier": {
+        "enabled": true,
+        "value": 1
+      },
+      "opacity": {
+        "enabled": false,
+        "value": 1
+      },
+      "reflectivity": {
+        "enabled": true,
+        "value": 0
+      },
+      "refractivity": {
+        "enabled": false,
+        "value": 0
+      },
+      "vertexColorAmount": {
+        "enabled": true,
+        "value": 1
+      },
+      "wrapSettings": {
+        "enabled": true,
+        "value": [
+          0,
+          0
+        ]
+      }
+    },
+    "wireframe": false
+  },
+  "326504d0453b4c4192e70a002405eb72.entity": {
+    "_readOnly": false,
+    "components": {
+      "transform": {
+        "children": {
+          "0867988e8eef40169b76d38661f07267.entity": {
+            "entityRef": "0867988e8eef40169b76d38661f07267.entity",
+            "sortValue": 3
+          },
+          "19fc79c0e51549d8a986ca347a878963.entity": {
+            "entityRef": "19fc79c0e51549d8a986ca347a878963.entity",
+            "sortValue": 4
+          },
+          "5e711b0837ef4e7fbcb9f06c7ce4ced9.entity": {
+            "entityRef": "5e711b0837ef4e7fbcb9f06c7ce4ced9.entity",
+            "sortValue": 5
+          }
+        },
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.06128793582320213,
+          0.06128793582320213,
+          0.06128793582320213
+        ],
+        "translation": [
+          0,
+          -1.1506845951080322,
+          0
+        ]
+      }
+    },
+    "created": "2015-05-08T12:46:45.021239+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "hidden": true,
+    "id": "326504d0453b4c4192e70a002405eb72.entity",
+    "license": "CC0",
+    "modified": "2015-05-08T12:46:45.021239+00:00",
+    "name": "ring_v01",
+    "static": false,
+    "tags": {}
+  },
+  "35600930e10d444b97dfc328160efa43.entity": {
+    "_readOnly": false,
+    "components": {
+      "meshData": {
+        "meshRef": "44df423eb9ed49d0965dd1af2c5b6be4.mesh"
+      },
+      "meshRenderer": {
+        "castShadows": true,
+        "cullMode": "Dynamic",
+        "materials": {
+          "c4dec0d0c0624d2395aa23dab8bf6b62.material": {
+            "materialRef": "c4dec0d0c0624d2395aa23dab8bf6b62.material",
+            "sortValue": 0
+          }
+        },
+        "receiveShadows": true,
+        "reflectable": true
+      },
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          -0.05,
+          0.05,
+          0.05
+        ],
+        "translation": [
+          0.08390903,
+          -0.09765226,
+          -0.02297008
+        ]
+      }
+    },
+    "created": "2015-05-08T12:46:43.486720+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "hidden": false,
+    "id": "35600930e10d444b97dfc328160efa43.entity",
+    "license": "CC0",
+    "modified": "2015-05-08T12:46:43.486720+00:00",
+    "name": "Glove mesh",
+    "static": false,
+    "tags": {}
+  },
+  "379450f3062049c6bc164652cddc4342.entity": {
+    "_readOnly": false,
+    "components": {
+      "light": {
+        "angle": 76,
+        "color": [
+          1,
+          1,
+          1,
+          1
+        ],
+        "direction": [
+          0,
+          0,
+          0
+        ],
+        "intensity": 0.48,
+        "penumbra": 5,
+        "range": 16.1,
+        "shadowCaster": true,
+        "shadowSettings": {
+          "darkness": 1,
+          "far": 16.1,
+          "fov": 76,
+          "near": 1,
+          "resolution": [
+            256,
+            256
+          ],
+          "shadowType": "PCF",
+          "size": 100
+        },
+        "specularIntensity": 1,
+        "type": "SpotLight"
+      },
+      "transform": {
+        "rotation": [
+          -79.95132574471786,
+          67.76098169899753,
+          -40.46998415316026
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          2.095820665359497,
+          2.407973289489746,
+          -1.891279935836792
+        ]
+      }
+    },
+    "created": "2015-05-08T13:24:27.506Z",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "hidden": false,
+    "id": "379450f3062049c6bc164652cddc4342.entity",
+    "license": "CC0",
+    "modified": "2015-05-08T13:26:40.199272+00:00",
+    "name": "Light 3",
+    "static": false,
+    "tags": {}
+  },
+  "38f9b6f74c8d470ab6dc8c2dda3beffe.texture": {
+    "_readOnly": false,
+    "anisotropy": 1,
+    "created": "2015-05-08T12:46:42.877475+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "flipY": true,
+    "generateMipmaps": true,
+    "id": "38f9b6f74c8d470ab6dc8c2dda3beffe.texture",
+    "imageRef": "fcd2dfcbeef2e6158761723e830b8d3672f70a36.png",
+    "license": "CC0",
+    "magFilter": "Bilinear",
+    "minFilter": "Trilinear",
+    "modified": "2015-05-08T12:46:42.877475+00:00",
+    "name": "sackDiffuse9.png 2",
+    "offset": [
+      0,
+      0
+    ],
+    "repeat": [
+      1,
+      1
+    ],
+    "wrapS": "Repeat",
+    "wrapT": "Repeat"
+  },
+  "3b1decd0b57140219db837cd6d2d6a2b.texture": {
+    "_readOnly": false,
+    "anisotropy": 1,
+    "created": "2015-05-08T12:46:44.688532+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "flipY": true,
+    "generateMipmaps": true,
+    "id": "3b1decd0b57140219db837cd6d2d6a2b.texture",
+    "imageRef": "fcd2dfcbeef2e6158761723e830b8d3672f70a36.png",
+    "license": "CC0",
+    "magFilter": "Bilinear",
+    "minFilter": "Trilinear",
+    "modified": "2015-05-08T12:46:44.688532+00:00",
+    "name": "sackDiffuse9.png",
+    "offset": [
+      0,
+      0
+    ],
+    "repeat": [
+      1,
+      1
+    ],
+    "wrapS": "Repeat",
+    "wrapT": "Repeat"
+  },
+  "3b6d9a602dfa493083f2d3fbfb4f9ea8.sound": {
+    "_readOnly": false,
+    "audioRefs": {
+      "wav": "ac4f4f59d90704b81115b6f0a50dcf4ad38960c2.wav"
+    },
+    "created": "2015-05-08T12:46:44.909167+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "id": "3b6d9a602dfa493083f2d3fbfb4f9ea8.sound",
+    "license": "CC0",
+    "loop": false,
+    "modified": "2015-05-08T12:46:44.909167+00:00",
+    "name": "260180__mentalsanityoff__workout-gym-training-boxing",
+    "volume": 1
+  },
+  "402a0516ec074b619bd8dfe252c6b3ca.material": {
+    "_readOnly": false,
+    "blendState": {
+      "blendDst": "OneMinusSrcAlphaFactor",
+      "blendEquation": "AddEquation",
+      "blendSrc": "SrcAlphaFactor",
+      "blending": "NoBlending"
+    },
+    "created": "2015-05-08T12:46:41.298773+00:00",
+    "cullState": {
+      "cullFace": "Back",
+      "enabled": true,
+      "frontFace": "CCW"
+    },
+    "dataModelVersion": 2,
+    "deleted": false,
+    "depthState": {
+      "enabled": true,
+      "write": true
+    },
+    "dualTransparency": false,
+    "flat": false,
+    "id": "402a0516ec074b619bd8dfe252c6b3ca.material",
+    "license": "CC0",
+    "modified": "2015-05-08T12:46:41.298773+00:00",
+    "name": "Material 2",
+    "renderQueue": -1,
+    "shaderRef": "GOO_ENGINE_SHADERS/uber",
+    "texturesMapping": {},
+    "uniforms": {
+      "discardThreshold": {
+        "enabled": true,
+        "value": 0.1
+      },
+      "etaRatio": {
+        "enabled": true,
+        "value": -0.5
+      },
+      "fresnel": {
+        "enabled": true,
+        "value": 0
+      },
+      "materialAmbient": {
+        "enabled": true,
+        "value": [
+          0.1,
+          0.1,
+          0.1,
+          1
+        ]
+      },
+      "materialDiffuse": {
+        "enabled": true,
+        "value": [
+          0.8,
+          0.8,
+          0.8,
+          1
+        ]
+      },
+      "materialEmissive": {
+        "enabled": true,
+        "value": [
+          0,
+          0,
+          0,
+          1
+        ]
+      },
+      "materialSpecular": {
+        "enabled": true,
+        "value": [
+          0.6,
+          0.6,
+          0.6,
+          1
+        ]
+      },
+      "materialSpecularPower": {
+        "enabled": true,
+        "value": 64
+      },
+      "normalMultiplier": {
+        "enabled": true,
+        "value": 1
+      },
+      "opacity": {
+        "enabled": false,
+        "value": 1
+      },
+      "reflectivity": {
+        "enabled": true,
+        "value": 0
+      },
+      "refractivity": {
+        "enabled": false,
+        "value": 0
+      },
+      "vertexColorAmount": {
+        "enabled": true,
+        "value": 1
+      },
+      "wrapSettings": {
+        "enabled": true,
+        "value": [
+          0,
+          0
+        ]
+      }
+    },
+    "wireframe": false
+  },
+  "40d2d30618634ceba0e4a7afe34faefc.mesh": {
+    "_readOnly": false,
+    "attributes": {
+      "NORMAL": {
+        "dimensions": 3,
+        "value": [
+          50724,
+          2055,
+          "float32"
+        ]
+      },
+      "POSITION": {
+        "dimensions": 3,
+        "value": [
+          26064,
+          2055,
+          "float32"
+        ]
+      },
+      "TANGENT": {
+        "dimensions": 4,
+        "value": [
+          39764,
+          2740,
+          "float32"
+        ]
+      },
+      "TEXCOORD0": {
+        "dimensions": 2,
+        "value": [
+          34284,
+          1370,
+          "float32"
+        ]
+      }
+    },
+    "binaryRef": "99a221c5174a7be0f768beca2befd3dec7ffc328.bin",
+    "boundingVolume": {
+      "max": [
+        0.9738044142723083,
+        2.404193878173828,
+        0.9738045334815979
+      ],
+      "min": [
+        -0.9738045930862427,
+        -2.697855234146118,
+        -0.9738048315048218
+      ],
+      "type": "BoundingBox"
+    },
+    "created": "2015-05-08T12:46:45.174182+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "id": "40d2d30618634ceba0e4a7afe34faefc.mesh",
+    "indexLengths": [
+      2868
+    ],
+    "indexModes": [
+      "Triangles"
+    ],
+    "indices": [
+      20328,
+      2868,
+      "uint16"
+    ],
+    "license": "CC0",
+    "modified": "2015-05-08T12:46:45.174182+00:00",
+    "name": "",
+    "type": "Mesh",
+    "vertexCount": 685
+  },
+  "42c84cf07e0d4296b74e6bd55553fa76.texture": {
+    "_readOnly": false,
+    "anisotropy": 16,
+    "created": "2015-05-08T13:22:45.068Z",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "flipY": true,
+    "generateMipmaps": true,
+    "id": "42c84cf07e0d4296b74e6bd55553fa76.texture",
+    "imageRef": "54adde8c279631423cbc624b728c06c65e555def.png",
+    "license": "CC0",
+    "lodBias": 0,
+    "magFilter": "Bilinear",
+    "minFilter": "Trilinear",
+    "modified": "2015-05-08T13:22:56.113889+00:00",
+    "name": "ground3.png",
+    "offset": [
+      0,
+      0
+    ],
+    "repeat": [
+      1,
+      1
+    ],
+    "wrapS": "Repeat",
+    "wrapT": "Repeat"
+  },
+  "43a7077293ed4bac95551ebc92e7d24c.texture": {
+    "_readOnly": false,
+    "anisotropy": 1,
+    "created": "2015-05-08T12:46:43.744473+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "flipY": true,
+    "generateMipmaps": true,
+    "id": "43a7077293ed4bac95551ebc92e7d24c.texture",
+    "imageRef": "fcd2dfcbeef2e6158761723e830b8d3672f70a36.png",
+    "license": "CC0",
+    "magFilter": "Bilinear",
+    "minFilter": "Trilinear",
+    "modified": "2015-05-08T12:46:43.744473+00:00",
+    "name": "sackDiffuse9.png 4",
+    "offset": [
+      0,
+      0
+    ],
+    "repeat": [
+      1,
+      1
+    ],
+    "wrapS": "Repeat",
+    "wrapT": "Repeat"
+  },
+  "44df423eb9ed49d0965dd1af2c5b6be4.mesh": {
+    "_readOnly": false,
+    "attributes": {
+      "NORMAL": {
+        "dimensions": 3,
+        "value": [
+          1077404,
+          70347,
+          "float32"
+        ]
+      },
+      "POSITION": {
+        "dimensions": 3,
+        "value": [
+          233240,
+          70347,
+          "float32"
+        ]
+      },
+      "TANGENT": {
+        "dimensions": 4,
+        "value": [
+          702220,
+          93796,
+          "float32"
+        ]
+      },
+      "TEXCOORD0": {
+        "dimensions": 2,
+        "value": [
+          514628,
+          46898,
+          "float32"
+        ]
+      }
+    },
+    "binaryRef": "861670337eb549c62dbae8bc51d63eb0da868c30.bin",
+    "boundingVolume": {
+      "max": [
+        3.844099998474121,
+        5.40470027923584,
+        4.282599925994873
+      ],
+      "min": [
+        -0.3679999113082886,
+        -0.13319993019104004,
+        -4.282599925994873
+      ],
+      "type": "BoundingBox"
+    },
+    "created": "2015-05-08T12:46:43.793576+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "id": "44df423eb9ed49d0965dd1af2c5b6be4.mesh",
+    "indexLengths": [
+      116619
+    ],
+    "indexModes": [
+      "Triangles"
+    ],
+    "indices": [
+      0,
+      116619,
+      "uint16"
+    ],
+    "license": "CC0",
+    "modified": "2015-05-08T12:46:43.793576+00:00",
+    "name": "",
+    "type": "Mesh",
+    "vertexCount": 23449
+  },
+  "462c4f87bfb64d129210f153b3931cf2.entity": {
+    "_readOnly": false,
+    "components": {
+      "rigidBody": {
+        "angularDrag": 0,
+        "angularVelocity": [
+          0,
+          0,
+          0
+        ],
+        "isKinematic": true,
+        "linearDrag": 0,
+        "mass": 0,
+        "velocity": [
+          0,
+          0,
+          0
+        ]
+      },
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          -0.2,
+          0,
+          -0.5
+        ]
+      }
+    },
+    "created": "2015-05-08T12:46:44.586520+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "hidden": false,
+    "id": "462c4f87bfb64d129210f153b3931cf2.entity",
+    "license": "CC0",
+    "modified": "2015-05-08T12:46:44.586520+00:00",
+    "name": "ControlBody2",
+    "static": false,
+    "tags": {}
+  },
+  "4ebb408019d64204a7ee729a620cfc87.texture": {
+    "_readOnly": false,
+    "anisotropy": 1,
+    "created": "2015-05-08T12:46:45.706245+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "flipY": true,
+    "generateMipmaps": true,
+    "id": "4ebb408019d64204a7ee729a620cfc87.texture",
+    "imageRef": "20b6c177cf3a98bc619083e2123715915b1bd0e7.png",
+    "license": "CC0",
+    "magFilter": "Bilinear",
+    "minFilter": "Trilinear",
+    "modified": "2015-05-08T12:46:45.706245+00:00",
+    "name": "3.png",
+    "offset": [
+      0,
+      0
+    ],
+    "repeat": [
+      1,
+      1
+    ],
+    "wrapS": "Repeat",
+    "wrapT": "Repeat"
+  },
+  "4ee68de276f047cabc30c0c5afe654de.environment": {
+    "_readOnly": false,
+    "backgroundColor": [
+      1,
+      1,
+      1,
+      1
+    ],
+    "created": "2015-05-08T12:46:45.069371+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "fog": {
+      "color": [
+        0.033333333333333326,
+        0,
+        0
+      ],
+      "enabled": true,
+      "far": 224,
+      "near": 25
+    },
+    "globalAmbient": [
+      0.008333333333333304,
+      0,
+      0,
+      0
+    ],
+    "id": "4ee68de276f047cabc30c0c5afe654de.environment",
+    "license": "CC0",
+    "modified": "2015-05-08T13:28:32.679638+00:00",
+    "name": "Default Environment",
+    "sound": {
+      "dopplerFactor": 0,
+      "maxDistance": 100,
+      "reverb": 0,
+      "rolloffFactor": 0.4,
+      "volume": 1
+    },
+    "weather": {
+      "snow": {
+        "enabled": false,
+        "height": 25,
+        "rate": 10,
+        "velocity": 10
+      }
+    }
+  },
+  "4ffdc3381f244c33957b9493293f79be.entity": {
+    "_readOnly": false,
+    "components": {
+      "script": {
+        "scripts": {
+          "565990f8854d4387bc7a9c078a231bbc.scriptInstance": {
+            "name": "Custom script",
+            "options": {
+              "enabled": true
+            },
+            "scriptRef": "58fcd6e3ebd044dcb5c38809552c270c.script",
+            "sortValue": 1
+          },
+          "9acf651eb0ba4c39b884500d60b50abc.scriptInstance": {
+            "name": "Custom script",
+            "options": {
+              "enabled": true
+            },
+            "scriptRef": "801e7f4b4dbf480c99675412d6867731.script",
+            "sortValue": 2
+          },
+          "cb2f40c417ad464bb794ffe01e368727.scriptInstance": {
+            "name": "Custom script",
+            "options": {
+              "enabled": true
+            },
+            "scriptRef": "71716f108228478bb5d333c96ee14d79.script",
+            "sortValue": 3
+          },
+          "cdbbb66eeab64036a5ba186b9d407515.scriptInstance": {
+            "name": "Custom script",
+            "options": {
+              "enabled": true
+            },
+            "scriptRef": "891387423ccf41bd824256737878621f.script",
+            "sortValue": 5
+          },
+          "f62ce632fc1e457db4ec3ee7154d0ea9.scriptInstance": {
+            "name": "Custom script",
+            "options": {
+              "enabled": true
+            },
+            "scriptRef": "a2c14052afb44a73b2221064812ac33e.script",
+            "sortValue": 4
+          }
+        }
+      },
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    "created": "2015-05-08T12:46:43.122175+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "hidden": false,
+    "id": "4ffdc3381f244c33957b9493293f79be.entity",
+    "license": "CC0",
+    "modified": "2015-05-08T12:46:43.122175+00:00",
+    "name": "Scripts",
+    "static": false,
+    "tags": {}
+  },
+  "5642f27410154b2a84088f43dab30bd6.entity": {
+    "_readOnly": false,
+    "components": {
+      "meshData": {
+        "meshRef": "c1157f78fe224b7b9fc84c87bfbd3dd7.mesh"
+      },
+      "meshRenderer": {
+        "castShadows": true,
+        "cullMode": "Dynamic",
+        "materials": {
+          "b849b38363694acbb6952d4bc906ae7d.material": {
+            "materialRef": "b849b38363694acbb6952d4bc906ae7d.material",
+            "sortValue": 0
+          }
+        },
+        "receiveShadows": true,
+        "reflectable": true
+      },
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          0,
+          32.097869873046875,
+          0
+        ]
+      }
+    },
+    "created": "2015-05-08T12:46:45.913708+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "hidden": false,
+    "id": "5642f27410154b2a84088f43dab30bd6.entity",
+    "license": "CC0",
+    "modified": "2015-05-08T12:46:45.913708+00:00",
+    "name": "Ring 2",
+    "static": false,
+    "tags": {}
+  },
+  "57bb3ea33afc410cae1ed5f05783b865.texture": {
+    "_readOnly": false,
+    "anisotropy": 1,
+    "created": "2015-05-08T12:46:41.517773+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "flipY": true,
+    "generateMipmaps": true,
+    "id": "57bb3ea33afc410cae1ed5f05783b865.texture",
+    "imageRef": "fcd2dfcbeef2e6158761723e830b8d3672f70a36.png",
+    "license": "CC0",
+    "magFilter": "Bilinear",
+    "minFilter": "Trilinear",
+    "modified": "2015-05-08T12:46:41.517773+00:00",
+    "name": "sackDiffuse9.png 3",
+    "offset": [
+      0,
+      0
+    ],
+    "repeat": [
+      1,
+      1
+    ],
+    "wrapS": "Repeat",
+    "wrapT": "Repeat"
+  },
+  "58fcd6e3ebd044dcb5c38809552c270c.script": {
+    "_readOnly": false,
+    "body": "'use strict';\n\nvar setup = function(args, ctx, goo) {\n    ctx.gloveLeft = ctx.world.by.name('Glove1').first();\n\tctx.gloveRight = ctx.world.by.name('Glove2').first();\n\t\n\t// control bodies\n    ctx.bodyLeft = ctx.world.by.name('ControlBody1').first();\n\tctx.bodyRight = ctx.world.by.name('ControlBody2').first();\n\t\n\tctx.frame = 0;\n\t\n\tctx.tmpVector = new goo.Vector3();\n};\n\nvar cleanup = function(args, ctx, goo) {\n\tif(ctx.joint1){\n\t\tctx.bodyLeft.rigidBodyComponent.removeJoint(ctx.joint1);\n\t\tctx.bodyLeft.rigidBodyComponent.destroyJoint(ctx.joint1);\n\t}\n\tif(ctx.joint2){\n\t\tctx.bodyRight.rigidBodyComponent.removeJoint(ctx.joint2);\n\t\tctx.bodyRight.rigidBodyComponent.destroyJoint(ctx.joint2);\n\t}\n};\n\nvar update = function(args, ctx, goo) {\n\tif(ctx.frame == 1){\n\t\t\n\t\t// Create joints\n\t\tvar jointA = ctx.joint1 = new goo.BallJoint({\n\t\t\tconnectedEntity: ctx.gloveLeft,\n\t\t\tlocalPivot: new goo.Vector3(),\n\t\t\tconnectedLocalPivot: new goo.Vector3()\n\t\t});\n\t\tjointA.autoConfigureConnectedPivot = false;\n\t\tctx.bodyLeft.rigidBodyComponent.addJoint(jointA);\n\t\tctx.bodyLeft.rigidBodyComponent.initializeJoint(jointA);\n\t\t\n\t\tvar jointB = ctx.joint2 = new goo.BallJoint({\n\t\t\tconnectedEntity: ctx.gloveRight,\n\t\t\tlocalPivot: new goo.Vector3(),\n\t\t\tconnectedLocalPivot: new goo.Vector3(),\n\t\t\tautoConfigureConnectedPivot: false\n\t\t});\n\t\tjointB.autoConfigureConnectedPivot = false;\n\t\tctx.bodyRight.rigidBodyComponent.addJoint(jointB);\n\t\tctx.bodyRight.rigidBodyComponent.initializeJoint(jointB);\n\t\t\n\t\tjointA.cannonJoint.equationX.maxForce = jointB.cannonJoint.equationX.maxForce = 0.5;\n\t\tjointA.cannonJoint.equationY.maxForce = jointB.cannonJoint.equationY.maxForce = 0.5;\n\t\tjointA.cannonJoint.equationX.minForce = jointB.cannonJoint.equationX.minForce = -0.5;\n\t\tjointA.cannonJoint.equationX.minForce = jointB.cannonJoint.equationX.minForce = -0.5;\n\t}\n\tctx.frame++;\n\t\n\tvar leftX, rightX, leftY, rightY;\n\t\n\t// Fuffr\n\tif (ctx.worldData.leftMove && ctx.worldData.fuffrTouchLeftX !== undefined && ctx.worldData.fuffrTouchLeftY !== undefined){\n\t\tvar fuffrTouchLeftX = ctx.worldData.fuffrTouchLeftX * (-1) - 0;\n\t\tvar fuffrTouchLeftY = ctx.worldData.fuffrTouchLeftY * (-1) - 0;\n\t\tctx.tmpVector.setDirect(fuffrTouchLeftX + 0.4 - 0, 0, fuffrTouchLeftY - 0.5);\n\t\tctx.bodyLeft.rigidBodyComponent.setPosition(ctx.tmpVector);\n\t} else if (ctx.worldData.touchMove && ctx.worldData.touchLeftX !== undefined && ctx.worldData.touchLeftY !== undefined){\n\t\tvar fuffrTouchLeftX = ctx.worldData.touchLeftX * (-1) - 0;\n\t\tvar fuffrTouchLeftY = ctx.worldData.touchLeftY * (-1) - 0;\n\t\tctx.tmpVector.setDirect(fuffrTouchLeftX + 0.4 - 1, 0, fuffrTouchLeftY - 0.5);\n\t\tctx.bodyLeft.rigidBodyComponent.setPosition(ctx.tmpVector);\n\t}\n\t\n\tif (ctx.worldData.rightMove && ctx.worldData.fuffrTouchRightX !== undefined && ctx.worldData.fuffrTouchRightY !== undefined){\n\t\tvar fuffrTouchRightX = (-1) * ctx.worldData.fuffrTouchRightX * 1 - 0;\n\t\tvar fuffrTouchRightY = (-1) * ctx.worldData.fuffrTouchRightY * 1 - 0;\n\t\tctx.tmpVector.setDirect(fuffrTouchRightX - 0.4 + 0, 0, fuffrTouchRightY - 0.5);\n\t\tctx.bodyRight.rigidBodyComponent.setPosition(ctx.tmpVector);\n\t} else if (ctx.worldData.touchMove && ctx.worldData.touchRightX !== undefined && ctx.worldData.touchRightY !== undefined){\n\t\tvar fuffrTouchRightX = (-1) * ctx.worldData.touchRightX * 1 - 0;\n\t\tvar fuffrTouchRightY = (-1) * ctx.worldData.touchRightY * 1 - 0;\n\t\tctx.tmpVector.setDirect(fuffrTouchRightX - 0.4 + 1, 0, fuffrTouchRightY - 0.5);\n\t\tctx.bodyRight.rigidBodyComponent.setPosition(ctx.tmpVector);\n\t}\n\t\n\t\t\n};\n\nvar parameters = [];",
+    "created": "2015-05-08T12:46:45.855987+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "dependencies": {},
+    "id": "58fcd6e3ebd044dcb5c38809552c270c.script",
+    "license": "CC0",
+    "modified": "2015-05-08T13:02:59.972027+00:00",
+    "name": "Controls"
+  },
+  "5a08d022f2324203b08e932fe5be0baf.entity": {
+    "_readOnly": false,
+    "components": {
+      "collider": {
+        "friction": 0,
+        "isTrigger": false,
+        "restitution": 0,
+        "shape": "Sphere",
+        "shapeOptions": {
+          "halfExtents": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "height": 1,
+          "radius": 0.2
+        }
+      },
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    "created": "2015-05-08T12:46:44.085017+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "hidden": false,
+    "id": "5a08d022f2324203b08e932fe5be0baf.entity",
+    "license": "CC0",
+    "modified": "2015-05-08T12:46:44.085017+00:00",
+    "name": "Collider",
+    "static": false,
+    "tags": {}
+  },
+  "5b97090fdd22421ba48959419d3aafd6.entity": {
+    "_readOnly": false,
+    "components": {
+      "collider": {
+        "friction": 0.3,
+        "isTrigger": false,
+        "restitution": 0,
+        "shape": "Cylinder",
+        "shapeOptions": {
+          "halfExtents": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "height": 1.5,
+          "radius": 0.27
+        }
+      },
+      "transform": {
+        "rotation": [
+          -91.06241110911697,
+          0,
+          0
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          -1.0185050314248656E-7,
+          -0.05696255713701248,
+          0.0029310849495232105
+        ]
+      }
+    },
+    "created": "2015-05-08T12:46:43.354644+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "hidden": false,
+    "id": "5b97090fdd22421ba48959419d3aafd6.entity",
+    "license": "CC0",
+    "modified": "2015-05-08T12:46:43.354644+00:00",
+    "name": "Collider",
+    "static": false,
+    "tags": {}
+  },
+  "5e711b0837ef4e7fbcb9f06c7ce4ced9.entity": {
+    "_readOnly": false,
+    "components": {
+      "meshData": {
+        "shape": "Quad"
+      },
+      "meshRenderer": {
+        "castShadows": true,
+        "cullMode": "Dynamic",
+        "materials": {
+          "931335db8be94d26bd5b30a1eba23022.material": {
+            "materialRef": "931335db8be94d26bd5b30a1eba23022.material",
+            "sortValue": 0
+          }
+        },
+        "receiveShadows": true,
+        "reflectable": true
+      },
+      "transform": {
+        "rotation": [
+          -90.00000250447816,
+          -179.999991348578,
+          0
+        ],
+        "scale": [
+          114.21498107910156,
+          114.21498107910156,
+          114.21498107910156
+        ],
+        "translation": [
+          0,
+          1.5394306182861328,
+          0
+        ]
+      }
+    },
+    "created": "2015-05-08T12:46:43.841347+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "hidden": false,
+    "id": "5e711b0837ef4e7fbcb9f06c7ce4ced9.entity",
+    "license": "CC0",
+    "modified": "2015-05-08T12:46:43.841347+00:00",
+    "name": "Quad",
+    "static": false,
+    "tags": {}
+  },
+  "5ec7affc47e84539838db7ccab555583.entity": {
+    "_readOnly": false,
+    "components": {
+      "transform": {
+        "children": {
+          "bd134ea4abeb4746834dbe58f639296c.entity": {
+            "entityRef": "bd134ea4abeb4746834dbe58f639296c.entity",
+            "sortValue": 0
+          },
+          "d1356acd57f04423a48bd2dde3e40f91.entity": {
+            "entityRef": "d1356acd57f04423a48bd2dde3e40f91.entity",
+            "sortValue": 1
+          },
+          "eca791dea3674bdda77bfaf9e9693af7.entity": {
+            "entityRef": "eca791dea3674bdda77bfaf9e9693af7.entity",
+            "sortValue": 2
+          }
+        },
+        "rotation": [
+          0,
+          93.2834793441784,
+          0
+        ],
+        "scale": [
+          0.27918264269828796,
+          0.27918264269828796,
+          0.27918264269828796
+        ],
+        "translation": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    "created": "2015-05-08T12:46:42.509697+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "hidden": false,
+    "id": "5ec7affc47e84539838db7ccab555583.entity",
+    "license": "CC0",
+    "modified": "2015-05-08T12:46:42.509697+00:00",
+    "name": "Meshes",
+    "static": false,
+    "tags": {}
+  },
+  "68a80da93cc54d87ba192cdb936f01d0.posteffects": {
+    "_readOnly": false,
+    "created": "2015-05-08T12:46:44.428574+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "id": "68a80da93cc54d87ba192cdb936f01d0.posteffects",
+    "license": "CC0",
+    "modified": "2015-05-08T12:46:44.428574+00:00",
+    "name": "Post effects",
+    "posteffects": {}
+  },
+  "69722183c03d46e9877f6aea68c77b01.script": {
+    "_readOnly": false,
+    "body": "'use strict';\n\nvar setup = function(args, ctx, goo) {\n\tctx.el = ctx.entity.htmlComponent.domElement;\n};\n\nvar cleanup = function(args, ctx, goo) {\n\n};\n\nvar update = function(args, ctx, goo) {\n\tctx.el.innerHTML = '<div style=\"background-color:white\">' + (ctx.worldData.fuffrTouchLeftX||0).toFixed(1) + ',' + (ctx.worldData.fuffrTouchLeftY||0).toFixed(1) + '</div>';\n};\n\nvar parameters = [];",
+    "created": "2015-05-08T12:46:45.393119+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "dependencies": {},
+    "id": "69722183c03d46e9877f6aea68c77b01.script",
+    "license": "CC0",
+    "modified": "2015-05-08T12:46:45.393119+00:00",
+    "name": "Debug positions"
+  },
+  "6be1cbc9edb14b8fa2a5de61fbc12e46.entity": {
+    "_readOnly": false,
+    "components": {
+      "meshData": {
+        "shape": "Cone",
+        "shapeOptions": {
+          "height": 1,
+          "radialSamples": 16,
+          "radius": 0.5
+        }
+      },
+      "meshRenderer": {
+        "castShadows": true,
+        "cullMode": "Dynamic",
+        "materials": {
+          "402a0516ec074b619bd8dfe252c6b3ca.material": {
+            "materialRef": "402a0516ec074b619bd8dfe252c6b3ca.material",
+            "sortValue": 0
+          }
+        },
+        "receiveShadows": true,
+        "reflectable": true
+      },
+      "script": {
+        "scripts": {
+          "bd3ea203d0354022a1b5c2e4f5713028.scriptInstance": {
+            "name": "Custom script",
+            "options": {
+              "color": [
+                0.7,
+                0.784,
+                0.8
+              ],
+              "edgeDampen": 0.43,
+              "edgeRelevance": 0,
+              "edgeScaling": -0.27,
+              "enabled": true,
+              "highRes": true,
+              "intensity": 0.77,
+              "scale": 0.41
+            },
+            "scriptRef": "0a727cba42304d799d3ed7d520905a1d.script",
+            "sortValue": 0
+          }
+        }
+      },
+      "transform": {
+        "rotation": [
+          159.86600069434942,
+          0,
+          0
+        ],
+        "scale": [
+          3.423882484436035,
+          3.423882484436035,
+          3.423882484436035
+        ],
+        "translation": [
+          -4.52387809753418,
+          1.523519515991211,
+          10.273066520690918
+        ]
+      }
+    },
+    "created": "2015-05-08T12:46:43.246727+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "hidden": true,
+    "id": "6be1cbc9edb14b8fa2a5de61fbc12e46.entity",
+    "license": "CC0",
+    "modified": "2015-05-08T13:37:29.806162+00:00",
+    "name": "Flare1",
+    "static": false,
+    "tags": {}
+  },
+  "71716f108228478bb5d333c96ee14d79.script": {
+    "_readOnly": false,
+    "body": "//'use strict';\n\n/**\n * Implement this method to initialize your script.\n * Called when pressing play and when running exported projects.\n *\n * @param {object} args\n *     Refer to http://www.goocreate.com/learn/parameters\n * @param {object} ctx\n *     Refer to http://www.goocreate.com/learn/the-ctx-object\n * @param {object} goo\n *     Refer to http://www.goocreate.com/learn/the-goo-object\n */\n\n \nvar setup = function(args, ctx, goo) {\n\t\n\t\n\t\n\t\n    fuffr.on.connected = function()\n    {\n\n    \n    \n    }\n\tconsole.log(fuffr);\n\t\n\tfuffr.enableSides( 4 | 8, 1);\n\t\n\tfunction fuffrTouches(touches)\n    {\n    \t//alert(touches[0].side);\n    \t//document.getElementById(\"fuffrText\").innerHTML = JSON.stringify(touches[0], null, 4);\n    \tfor(var i = 0;i<touches.length;i++)\n    \t{\n    \t\tvar touch = touches[i];\n    \t\tif (touch.side == 4)\n    \t\t{\n    \t\t\tctx.worldData.fuffrTouchLeftX = (touch.normx - 0.5) * 2;\n    \t\t\tctx.worldData.fuffrTouchLeftY = (touch.normy - 0.5) * 2;\n    \t\t\tctx.worldData.leftMove = true;\n    \t\t}\n    \t\telse if (touch.side == 8)\n    \t\t{\n    \t\t\tctx.worldData.fuffrTouchRightX = (touch.normx - 0.5) * 2;\n    \t\t\tctx.worldData.fuffrTouchRightY = (touch.normy - 0.5) * 2;\n    \t\t\tctx.worldData.rightMove = true;\n    \t\t}\n    \t}\n    }\n\t\n\t\n\tfunction fuffrEndTouch(touches)\n\t{\n\t\tfor(var i = 0;i<touches.length;i++)\n    \t{\n    \t}\n\t}\n//\tfuffr.on.touchesBegan = fuffrTouches;\n\tfuffr.on.touchesMoved = fuffrTouches;\n\t\n\tfuffr.on.touchesEnded = fuffrEndTouch;\n};\n\n/**\n * Implement this method to do cleanup.\n * Called when the script is stopped or deleted.\n *\n * @param {object} args\n *     Refer to http://www.goocreate.com/learn/parameters\n * @param {object} ctx\n *     Refer to http://www.goocreate.com/learn/the-ctx-object\n * @param {object} goo\n *     Refer to http://www.goocreate.com/learn/the-goo-object\n */\nvar cleanup = function(args, ctx, goo) {\n\n};\n\n/**\n * This function will be called every frame.\n *\n * @param {object} args\n *     Contains all the parameters defined in the 'parameters' variable below.\n *     Its values are chosen in the scripts panel.\n *\n * @param {object} ctx\n *     Refer to http://www.goocreate.com/learn/the-ctx-object\n * @param {object} goo\n *     Refer to http://www.goocreate.com/learn/the-goo-object\n */\nvar update = function(args, ctx, goo) {\n\n};\n\n/**\n * Parameters defined here will be available on the 'args' object as 'args.key'\n * and customizable using the script panel. Parameters are defined like below.\n * 'key', 'type', and 'default' are required properties.\n *\n * For details refer to: http://www.goocreate.com/learn/parameters\n */\nvar parameters = [];",
+    "created": "2015-05-08T12:46:44.030740+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "dependencies": {
+      "lib/fuffr.js": {
+        "sortValue": 0,
+        "url": "lib/fuffr.js"
+      }
+    },
+    "id": "71716f108228478bb5d333c96ee14d79.script",
+    "license": "CC0",
+    "modified": "2015-05-08T12:46:44.030740+00:00",
+    "name": "FuffrConnect"
+  },
+  "74ddecc6cbe04691873a7e5a39c98ce3.material": {
+    "_readOnly": false,
+    "blendState": {
+      "blendDst": "OneMinusSrcAlphaFactor",
+      "blendEquation": "AddEquation",
+      "blendSrc": "SrcAlphaFactor",
+      "blending": "NoBlending"
+    },
+    "created": "2015-05-08T12:46:41.936191+00:00",
+    "cullState": {
+      "cullFace": "Back",
+      "enabled": true,
+      "frontFace": "CCW"
+    },
+    "dataModelVersion": 2,
+    "deleted": false,
+    "depthState": {
+      "enabled": true,
+      "write": true
+    },
+    "dualTransparency": false,
+    "flat": false,
+    "id": "74ddecc6cbe04691873a7e5a39c98ce3.material",
+    "license": "CC0",
+    "modified": "2015-05-08T13:31:11.220218+00:00",
+    "name": "lambert1",
+    "renderQueue": -1,
+    "shaderRef": "GOO_ENGINE_SHADERS/uber",
+    "texturesMapping": {
+      "AO_MAP": {
+        "enabled": true,
+        "textureRef": "43a7077293ed4bac95551ebc92e7d24c.texture"
+      },
+      "DIFFUSE_MAP": {
+        "enabled": true,
+        "textureRef": "57bb3ea33afc410cae1ed5f05783b865.texture"
+      },
+      "LOCAL_ENVIRONMENT": {
+        "enabled": true,
+        "textureRef": "a58b7c15a17f49e6b70746d93d81b3e1.texture"
+      },
+      "REFLECTION_MAP": {
+        "enabled": true,
+        "textureRef": "db9f2a12e13b471092aa3ef1144348c7.texture"
+      }
+    },
+    "uniforms": {
+      "discardThreshold": {
+        "enabled": true,
+        "value": 0.1
+      },
+      "etaRatio": {
+        "enabled": true,
+        "value": -0.5
+      },
+      "fresnel": {
+        "enabled": true,
+        "value": 0.1
+      },
+      "materialAmbient": {
+        "enabled": true,
+        "value": [
+          0.1875,
+          0.1875,
+          0.1875,
+          1
+        ]
+      },
+      "materialDiffuse": {
+        "enabled": true,
+        "value": [
+          0.4000000059604645,
+          0.4000000059604645,
+          0.4000000059604645,
+          1
+        ]
+      },
+      "materialEmissive": {
+        "enabled": true,
+        "value": [
+          0,
+          0,
+          0,
+          1
+        ]
+      },
+      "materialSpecular": {
+        "enabled": true,
+        "value": [
+          0,
+          0,
+          0,
+          1
+        ]
+      },
+      "materialSpecularPower": {
+        "enabled": true,
+        "value": 1
+      },
+      "normalMultiplier": {
+        "enabled": true,
+        "value": 1
+      },
+      "opacity": {
+        "enabled": false,
+        "value": 1
+      },
+      "reflectivity": {
+        "enabled": true,
+        "value": 1
+      },
+      "refractivity": {
+        "enabled": false,
+        "value": 0
+      },
+      "vertexColorAmount": {
+        "enabled": true,
+        "value": 1
+      },
+      "wrapSettings": {
+        "enabled": true,
+        "value": [
+          0,
+          0
+        ]
+      }
+    },
+    "wireframe": false
+  },
+  "783849e9288b4526a3362a8ae0a682b3.entity": {
+    "_readOnly": false,
+    "components": {
+      "meshData": {
+        "shape": "Quad"
+      },
+      "meshRenderer": {
+        "castShadows": true,
+        "cullMode": "Dynamic",
+        "materials": {
+          "2b32a16860284d779fc82da18397ff96.material": {
+            "materialRef": "2b32a16860284d779fc82da18397ff96.material",
+            "sortValue": 0
+          }
+        },
+        "receiveShadows": true,
+        "reflectable": true
+      },
+      "transform": {
+        "rotation": [
+          -90,
+          0,
+          0
+        ],
+        "scale": [
+          1000,
+          1000,
+          1000
+        ],
+        "translation": [
+          0,
+          -34.23649597167969,
+          2.0641752467454727E-15
+        ]
+      }
+    },
+    "created": "2015-05-08T12:46:41.986792+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "hidden": false,
+    "id": "783849e9288b4526a3362a8ae0a682b3.entity",
+    "license": "CC0",
+    "modified": "2015-05-08T13:25:00.291117+00:00",
+    "name": "Floor",
+    "static": false,
+    "tags": {}
+  },
+  "794af475cedb4dfe8bae69d51a5c9e8e.entity": {
+    "_readOnly": false,
+    "components": {
+      "meshData": {
+        "meshRef": "44df423eb9ed49d0965dd1af2c5b6be4.mesh"
+      },
+      "meshRenderer": {
+        "castShadows": true,
+        "cullMode": "Dynamic",
+        "materials": {
+          "de97d159068b41b7b74408e9e6331cec.material": {
+            "materialRef": "de97d159068b41b7b74408e9e6331cec.material",
+            "sortValue": 0
+          }
+        },
+        "receiveShadows": true,
+        "reflectable": true
+      },
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.05,
+          0.05,
+          0.05
+        ],
+        "translation": [
+          -0.0839090347290039,
+          -0.09765225648880005,
+          -0.022970080375671387
+        ]
+      }
+    },
+    "created": "2015-05-08T12:46:42.252778+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "hidden": false,
+    "id": "794af475cedb4dfe8bae69d51a5c9e8e.entity",
+    "license": "CC0",
+    "modified": "2015-05-08T12:46:42.252778+00:00",
+    "name": "Glove mesh",
+    "static": false,
+    "tags": {}
+  },
+  "7dae1a8b303c4ce39915a519df87331e.material": {
+    "_readOnly": false,
+    "blendState": {
+      "blendDst": "OneMinusSrcAlphaFactor",
+      "blendEquation": "AddEquation",
+      "blendSrc": "SrcAlphaFactor",
+      "blending": "NoBlending"
+    },
+    "created": "2015-05-08T12:46:42.826709+00:00",
+    "cullState": {
+      "cullFace": "Front",
+      "enabled": true,
+      "frontFace": "CCW"
+    },
+    "dataModelVersion": 2,
+    "deleted": false,
+    "depthState": {
+      "enabled": true,
+      "write": true
+    },
+    "dualTransparency": false,
+    "flat": false,
+    "id": "7dae1a8b303c4ce39915a519df87331e.material",
+    "license": "CC0",
+    "modified": "2015-05-08T12:46:42.826709+00:00",
+    "name": "Material 3",
+    "renderQueue": -1,
+    "shaderRef": "GOO_ENGINE_SHADERS/uber",
+    "texturesMapping": {},
+    "uniforms": {
+      "discardThreshold": {
+        "enabled": true,
+        "value": 0.1
+      },
+      "etaRatio": {
+        "enabled": true,
+        "value": -0.5
+      },
+      "fresnel": {
+        "enabled": true,
+        "value": 0
+      },
+      "materialAmbient": {
+        "enabled": true,
+        "value": [
+          0.1,
+          0.1,
+          0.1,
+          1
+        ]
+      },
+      "materialDiffuse": {
+        "enabled": true,
+        "value": [
+          0.8,
+          0.8,
+          0.8,
+          1
+        ]
+      },
+      "materialEmissive": {
+        "enabled": true,
+        "value": [
+          0,
+          0,
+          0,
+          1
+        ]
+      },
+      "materialSpecular": {
+        "enabled": true,
+        "value": [
+          0.6,
+          0.6,
+          0.6,
+          1
+        ]
+      },
+      "materialSpecularPower": {
+        "enabled": true,
+        "value": 64
+      },
+      "normalMultiplier": {
+        "enabled": true,
+        "value": 1
+      },
+      "opacity": {
+        "enabled": false,
+        "value": 1
+      },
+      "reflectivity": {
+        "enabled": true,
+        "value": 0
+      },
+      "refractivity": {
+        "enabled": false,
+        "value": 0
+      },
+      "vertexColorAmount": {
+        "enabled": true,
+        "value": 1
+      },
+      "wrapSettings": {
+        "enabled": true,
+        "value": [
+          0,
+          0
+        ]
+      }
+    },
+    "wireframe": false
+  },
+  "7e8153ae981c4fdbb444e7ef80594f43.scene": {
+    "canvas": {
+      "mode": "Stretch",
+      "resolution": {
+        "height": 1080,
+        "width": 1920
+      }
+    },
+    "created": "2015-05-08T12:46:44.211854+00:00",
+    "dataModelVersion": 2,
+    "defaultPackRef": "764f7063f7184995ae388eec8758e151.pack",
+    "deleted": false,
+    "entities": {
+      "16f2d7341bf44aaa8f4efaaa83ddc23c.entity": {
+        "entityRef": "16f2d7341bf44aaa8f4efaaa83ddc23c.entity",
+        "sortValue": 30
+      },
+      "19aa1d53783a45079f2258b343f2e394.entity": {
+        "entityRef": "19aa1d53783a45079f2258b343f2e394.entity",
+        "sortValue": 25
+      },
+      "21dfb89533024d37b103787eab587350.entity": {
+        "entityRef": "21dfb89533024d37b103787eab587350.entity",
+        "sortValue": 24
+      },
+      "2920c85a8db542e793f31b52e9493adc.entity": {
+        "entityRef": "2920c85a8db542e793f31b52e9493adc.entity",
+        "sortValue": 19
+      },
+      "326504d0453b4c4192e70a002405eb72.entity": {
+        "entityRef": "326504d0453b4c4192e70a002405eb72.entity",
+        "sortValue": 29
+      },
+      "379450f3062049c6bc164652cddc4342.entity": {
+        "entityRef": "379450f3062049c6bc164652cddc4342.entity",
+        "sortValue": 31
+      },
+      "462c4f87bfb64d129210f153b3931cf2.entity": {
+        "entityRef": "462c4f87bfb64d129210f153b3931cf2.entity",
+        "sortValue": 26
+      },
+      "4ffdc3381f244c33957b9493293f79be.entity": {
+        "entityRef": "4ffdc3381f244c33957b9493293f79be.entity",
+        "sortValue": 11
+      },
+      "6be1cbc9edb14b8fa2a5de61fbc12e46.entity": {
+        "entityRef": "6be1cbc9edb14b8fa2a5de61fbc12e46.entity",
+        "sortValue": 20
+      },
+      "783849e9288b4526a3362a8ae0a682b3.entity": {
+        "entityRef": "783849e9288b4526a3362a8ae0a682b3.entity",
+        "sortValue": 13
+      },
+      "832cf9b378cb475698f86c86ee678e02.entity": {
+        "entityRef": "832cf9b378cb475698f86c86ee678e02.entity",
+        "sortValue": 5
+      },
+      "a1b7a78295584e39ae2beca680957356.entity": {
+        "entityRef": "a1b7a78295584e39ae2beca680957356.entity",
+        "sortValue": 10
+      },
+      "a9d93073ccc142ab9ee618fdc4cd0e51.entity": {
+        "entityRef": "a9d93073ccc142ab9ee618fdc4cd0e51.entity",
+        "sortValue": 23
+      },
+      "bbde83242495478a818a8bbf62d550cd.entity": {
+        "entityRef": "bbde83242495478a818a8bbf62d550cd.entity",
+        "sortValue": 16
+      },
+      "d16f2731a35b4daf8807b1d73fc81be8.entity": {
+        "entityRef": "d16f2731a35b4daf8807b1d73fc81be8.entity",
+        "sortValue": 22
+      },
+      "dcc698f34f994f49809df837f1ba6e5c.entity": {
+        "entityRef": "dcc698f34f994f49809df837f1ba6e5c.entity",
+        "sortValue": 0
+      },
+      "fd306f5991ec46cab2f7f87b55da282b.entity": {
+        "entityRef": "fd306f5991ec46cab2f7f87b55da282b.entity",
+        "sortValue": 27
+      },
+      "fe0779157a874ef9ba2d1d9467c1513e.entity": {
+        "entityRef": "fe0779157a874ef9ba2d1d9467c1513e.entity",
+        "sortValue": 21
+      }
+    },
+    "environmentRef": "4ee68de276f047cabc30c0c5afe654de.environment",
+    "id": "7e8153ae981c4fdbb444e7ef80594f43.scene",
+    "initialCameraRef": "dcc698f34f994f49809df837f1ba6e5c.entity",
+    "license": "CC0",
+    "modified": "2015-06-09T10:46:28.665093+00:00",
+    "name": "Fuffr Boxing v2",
+    "packs": {
+      "764f7063f7184995ae388eec8758e151.pack": {
+        "packRef": "764f7063f7184995ae388eec8758e151.pack",
+        "sortValue": 0
+      }
+    },
+    "posteffectsRef": "68a80da93cc54d87ba192cdb936f01d0.posteffects",
+    "publishedUrl": "https://c1.goote.ch/7e8153ae981c4fdbb444e7ef80594f43.scene",
+    "publishedUrls": {
+      "https://c1.goote.ch/12fa1eb300e120083e0ee884bfedd56f5bb12e48": "2015-05-08T12:56:49.327765+00:00",
+      "https://c1.goote.ch/15030d198397d7778ebf30e0c990deca64e1496d": "2015-05-08T12:52:41.436876+00:00",
+      "https://c1.goote.ch/1b216fd10aec2efba6b2c8556170a7cd2c7dd4a4": "2015-05-08T13:03:10.646675+00:00",
+      "https://c1.goote.ch/4184300f5f8f318915366242741932ab134bbbf3": "2015-05-08T13:00:39.290137+00:00",
+      "https://c1.goote.ch/7c2e8c87f46059edd82ff390b713c9a32e8c22e7": "2015-05-08T15:09:24.615843+00:00",
+      "https://c1.goote.ch/7ecef23f1f65f95daa152f9d85e02c79209b50ba": "2015-05-08T12:49:38.287966+00:00",
+      "https://c1.goote.ch/a80f50b425ec1e022247fd03f1abe85e14c7da7a": "2015-05-08T12:54:25.032326+00:00",
+      "https://c1.goote.ch/ad342b69017f5526cbe91a8d0ac0448d85fa8caa": "2015-05-08T12:51:58.753442+00:00",
+      "https://c1.goote.ch/cb20c1e5dc505d71b52afd4b19ec371ae0cd6879": "2015-05-08T12:48:09.257904+00:00",
+      "https://c1.goote.ch/f095b6782017cdfb289e478d2a8b2215716bd2db": "2015-05-11T11:12:21.693501+00:00",
+      "https://c1.goote.ch/f5c50f6b666c23c4aeb8d6818d19cec37706d220": "2015-05-08T13:38:01.192282+00:00"
+    },
+    "tags": {},
+    "thumbnailRef": "e01491b215b7f657b536c5c5df3d87c0366ef58e.jpg"
+  },
+  "801e7f4b4dbf480c99675412d6867731.script": {
+    "_readOnly": false,
+    "body": "'use strict';\n\nvar setup = function(args, ctx, goo) {\nctx.listener = function(data) {\nctx.domElement.style.width = '1px';\nctx.domElement.style.height = '1px';\nctx.domElement.offsetHeight;\nctx.domElement.style.width = '';\nctx.domElement.style.height = '';\n};\ngoo.SystemBus.addListener('goo.viewportResize', ctx.listener);\n\nctx.frame = 0;\n};\n\nvar cleanup = function(args, ctx, goo) {\ngoo.SystemBus.removeListener('goo.viewportResize', ctx.listener);\n};\n\nvar update = function(args, ctx, goo) {\nctx.frame++;\n\nif(ctx.frame < 20){\nvar camera = ctx.activeCameraEntity.cameraComponent.camera;\nvar oldAspect = camera.aspect;\ncamera.aspect += 1;\ncamera.lockedRatio = !camera.lockedRatio;\n                ctx.world.gooRunner.renderer.checkResize(camera);\n                camera.aspect = oldAspect;\n                camera.lockedRatio = !camera.lockedRatio;\n                ctx.world.gooRunner.renderer.checkResize(camera);\n        }\n};\n\nvar parameters = [];",
+    "created": "2015-05-08T12:46:41.781891+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "dependencies": {},
+    "id": "801e7f4b4dbf480c99675412d6867731.script",
+    "license": "CC0",
+    "modified": "2015-05-08T12:46:41.781891+00:00",
+    "name": "Adapt for Phone"
+  },
+  "832cf9b378cb475698f86c86ee678e02.entity": {
+    "_readOnly": false,
+    "components": {
+      "light": {
+        "angle": 30,
+        "color": [
+          1,
+          1,
+          1,
+          1
+        ],
+        "direction": [
+          0,
+          0,
+          0
+        ],
+        "intensity": 1,
+        "penumbra": 5,
+        "range": 60,
+        "shadowCaster": false,
+        "shadowSettings": {
+          "darkness": 1,
+          "far": 60,
+          "fov": 55,
+          "near": 1,
+          "resolution": [
+            256,
+            256
+          ],
+          "shadowType": "Basic",
+          "size": 100
+        },
+        "specularIntensity": 1,
+        "type": "DirectionalLight"
+      },
+      "transform": {
+        "rotation": [
+          -56.778840060844495,
+          -21.178510993431107,
+          36.27047990801836
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          0,
+          11.380231857299805,
+          0
+        ]
+      }
+    },
+    "created": "2015-05-08T12:46:43.537116+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "hidden": false,
+    "id": "832cf9b378cb475698f86c86ee678e02.entity",
+    "license": "CC0",
+    "modified": "2015-05-08T12:46:43.537116+00:00",
+    "name": "Light",
+    "static": false,
+    "tags": {}
+  },
+  "891387423ccf41bd824256737878621f.script": {
+    "_readOnly": false,
+    "body": "'use strict';\n\nvar setup = function(args, ctx, goo) {\n\tvar listeners = ctx.listeners = {\n\t\ttouchstart: function(){\n\t\t\tgoo.GameUtils.requestFullScreen();\n\t\t}\n\t};\n\tfor(var key in listeners){\n\t\twindow.addEventListener(key, listeners[key]);\n\t}\n};\n\nvar cleanup = function(args, ctx, goo) {\n\tvar listeners = ctx.listeners;\n\tfor(var key in listeners){\n\t\twindow.addEventListener(key, listeners[key]);\n\t}\n};\n\nvar update = function(args, ctx, goo) {\n\n};\n\nvar parameters = [];",
+    "created": "2015-05-08T12:46:45.440949+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "dependencies": {},
+    "id": "891387423ccf41bd824256737878621f.script",
+    "license": "CC0",
+    "modified": "2015-05-08T12:46:45.440949+00:00",
+    "name": "Request fullscreen"
+  },
+  "8d9829b5f16944099ad419ac61e8fec7.sound": {
+    "_readOnly": false,
+    "audioRefs": {
+      "mp3": "c8eaa89a05dd7553d1ac670970ddbf4fd652890d.mp3"
+    },
+    "created": "2015-05-08T12:46:45.550041+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "id": "8d9829b5f16944099ad419ac61e8fec7.sound",
+    "license": "CC0",
+    "loop": false,
+    "modified": "2015-05-08T12:46:45.550041+00:00",
+    "name": "162369__lewisisminted__punch-2 (1)",
+    "volume": 1
+  },
+  "931335db8be94d26bd5b30a1eba23022.material": {
+    "_readOnly": false,
+    "blendState": {
+      "blendDst": "OneMinusSrcAlphaFactor",
+      "blendEquation": "AddEquation",
+      "blendSrc": "SrcAlphaFactor",
+      "blending": "NoBlending"
+    },
+    "created": "2015-05-08T12:46:42.406327+00:00",
+    "cullState": {
+      "cullFace": "Back",
+      "enabled": true,
+      "frontFace": "CCW"
+    },
+    "dataModelVersion": 2,
+    "deleted": false,
+    "depthState": {
+      "enabled": true,
+      "write": true
+    },
+    "dualTransparency": false,
+    "flat": false,
+    "id": "931335db8be94d26bd5b30a1eba23022.material",
+    "license": "CC0",
+    "modified": "2015-05-08T13:27:00.139987+00:00",
+    "name": "Material 4",
+    "renderQueue": -1,
+    "shaderRef": "GOO_ENGINE_SHADERS/uber",
+    "texturesMapping": {
+      "DIFFUSE_MAP": {
+        "enabled": true,
+        "textureRef": "42c84cf07e0d4296b74e6bd55553fa76.texture"
+      }
+    },
+    "uniforms": {
+      "discardThreshold": {
+        "enabled": true,
+        "value": 0.1
+      },
+      "etaRatio": {
+        "enabled": true,
+        "value": -0.5
+      },
+      "fresnel": {
+        "enabled": true,
+        "value": 0
+      },
+      "materialAmbient": {
+        "enabled": true,
+        "value": [
+          0,
+          0,
+          0,
+          1
+        ]
+      },
+      "materialDiffuse": {
+        "enabled": true,
+        "value": [
+          1,
+          1,
+          1,
+          1
+        ]
+      },
+      "materialEmissive": {
+        "enabled": true,
+        "value": [
+          0,
+          0,
+          0,
+          1
+        ]
+      },
+      "materialSpecular": {
+        "enabled": true,
+        "value": [
+          0.6,
+          0.6,
+          0.6,
+          1
+        ]
+      },
+      "materialSpecularPower": {
+        "enabled": true,
+        "value": 155.56
+      },
+      "normalMultiplier": {
+        "enabled": true,
+        "value": 1
+      },
+      "opacity": {
+        "enabled": false,
+        "value": 1
+      },
+      "reflectivity": {
+        "enabled": true,
+        "value": 0
+      },
+      "refractivity": {
+        "enabled": false,
+        "value": 0
+      },
+      "vertexColorAmount": {
+        "enabled": true,
+        "value": 1
+      },
+      "wrapSettings": {
+        "enabled": true,
+        "value": [
+          0,
+          0
+        ]
+      }
+    },
+    "wireframe": false
+  },
+  "9db2243d302a43ffa171d0e265bca272.material": {
+    "_readOnly": false,
+    "blendState": {
+      "blendDst": "OneMinusSrcAlphaFactor",
+      "blendEquation": "AddEquation",
+      "blendSrc": "SrcAlphaFactor",
+      "blending": "NoBlending"
+    },
+    "created": "2015-05-08T12:46:44.323450+00:00",
+    "cullState": {
+      "cullFace": "Back",
+      "enabled": true,
+      "frontFace": "CCW"
+    },
+    "dataModelVersion": 2,
+    "deleted": false,
+    "depthState": {
+      "enabled": true,
+      "write": true
+    },
+    "dualTransparency": false,
+    "flat": false,
+    "id": "9db2243d302a43ffa171d0e265bca272.material",
+    "license": "CC0",
+    "modified": "2015-05-08T13:34:04.253978+00:00",
+    "name": "rope_2_v08_animation_v06_bind:lambert2",
+    "renderQueue": -1,
+    "shaderRef": "GOO_ENGINE_SHADERS/uber",
+    "texturesMapping": {},
+    "uniforms": {
+      "discardThreshold": {
+        "enabled": true,
+        "value": 0.1
+      },
+      "etaRatio": {
+        "enabled": true,
+        "value": -0.5
+      },
+      "fresnel": {
+        "enabled": true,
+        "value": 0.47
+      },
+      "materialAmbient": {
+        "enabled": true,
+        "value": [
+          0.07916666666666672,
+          0.07916666666666672,
+          0.07916666666666672,
+          1
+        ]
+      },
+      "materialDiffuse": {
+        "enabled": true,
+        "value": [
+          0.4000000059604645,
+          0.4000000059604645,
+          0.4000000059604645,
+          1
+        ]
+      },
+      "materialEmissive": {
+        "enabled": true,
+        "value": [
+          0,
+          0,
+          0,
+          1
+        ]
+      },
+      "materialSpecular": {
+        "enabled": true,
+        "value": [
+          0,
+          0,
+          0,
+          1
+        ]
+      },
+      "materialSpecularPower": {
+        "enabled": true,
+        "value": 1
+      },
+      "normalMultiplier": {
+        "enabled": true,
+        "value": 1
+      },
+      "opacity": {
+        "enabled": false,
+        "value": 1
+      },
+      "reflectivity": {
+        "enabled": true,
+        "value": 0.3
+      },
+      "refractivity": {
+        "enabled": false,
+        "value": 0
+      },
+      "vertexColorAmount": {
+        "enabled": true,
+        "value": 1
+      },
+      "wrapSettings": {
+        "enabled": true,
+        "value": [
+          0,
+          0
+        ]
+      }
+    },
+    "wireframe": false
+  },
+  "9fbe620a132b473995cdb9f1baec27f1.script": {
+    "_readOnly": false,
+    "body": "'use strict';\n\nvar setup = function(args, ctx, goo) {\n\n};\n\nvar cleanup = function(args, ctx, goo) {\n\n};\n\nvar update = function(args, ctx, goo) {\n\tif(args.entity)\n\t\tctx.entity.lookAt(args.entity.transformComponent.worldTransform.translation);\n};\n\nvar parameters = [{\n\tkey: 'entity',\n\ttype: 'entity'\n}];",
+    "created": "2015-05-08T13:46:36.564Z",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "dependencies": {},
+    "id": "9fbe620a132b473995cdb9f1baec27f1.script",
+    "license": "CC0",
+    "modified": "2015-05-08T13:47:53.352978+00:00",
+    "name": "Folllow entity"
+  },
+  "a1b7a78295584e39ae2beca680957356.entity": {
+    "_readOnly": false,
+    "components": {
+      "stateMachine": {
+        "machines": {
+          "ccc68ad1def1413598842afb7e439fb5.machine": {
+            "machineRef": "ccc68ad1def1413598842afb7e439fb5.machine",
+            "sortValue": 0
+          }
+        }
+      },
+      "transform": {
+        "children": {},
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          -1.2149019241333008,
+          89.78544616699219,
+          28.750019073486328
+        ]
+      }
+    },
+    "created": "2015-05-08T12:46:45.498304+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "hidden": false,
+    "id": "a1b7a78295584e39ae2beca680957356.entity",
+    "license": "CC0",
+    "modified": "2015-05-08T12:46:45.498304+00:00",
+    "name": "BagPivot",
+    "static": false,
+    "tags": {}
+  },
+  "a2c14052afb44a73b2221064812ac33e.script": {
+    "_readOnly": false,
+    "body": "var setup = function(args, ctx, goo) {\n\tctx.leftState = {\n\t\tx: -1,\n\t\ty: 1,\n\t\tidentifier: -1\n\t};\n\tctx.rightState = {\n\t\tx: 1,\n\t\ty: 1,\n\t\tidentifier: -1\n\t};\n\t\n\tpositionsUpdated();\n\t\n\tfunction positionsUpdated(){\n\t\tctx.worldData.touchLeftX = ctx.leftState.x;\n\t\tctx.worldData.touchLeftY = ctx.leftState.y;\n\t\tctx.worldData.touchRightX = ctx.rightState.x;\n\t\tctx.worldData.touchRightY = ctx.rightState.y;\n\t\tctx.worldData.touchMove = true;\n\t}\n\t\n\tfunction getX(touch){\n\t\treturn 2 * (touch.clientX * ctx.world.gooRunner.renderer.devicePixelRatio / ctx.viewportWidth) - 1;\n\t}\n\tfunction getY(touch){\n\t\treturn 2 * (touch.clientY * ctx.world.gooRunner.renderer.devicePixelRatio / ctx.viewportHeight) - 1;\n\t}\n\t\n\tvar listeners = ctx.listeners = {\n\t\ttouchstart: function(event){\n\t\t\tfor(var i=0; i<event.changedTouches.length; i++){\n\t\t\t\tvar touch = event.changedTouches[i];\n\t\t\t\t\n\t\t\t\tvar x = getX(touch);\n\t\t\t\tvar y = getY(touch);\n\t\t\t\t\n\t\t\t\tvar state = x < 0 ? ctx.leftState : ctx.rightState;\n\t\t\t\n\t\t\t\tif(state.identifier === -1 || state.identifier === touch.identifier){\n\t\t\t\t\tstate.x = x;\n\t\t\t\t\tstate.y = y;\n\t\t\t\t\tstate.identifier = touch.identifier;\n\t\t\t\t\tpositionsUpdated();\n\t\t\t\t}\n\t\t\t}\n\t\t},\n\t\t\n\t\ttouchmove: function(event){\n\t\t\tfor(var i=0; i<event.changedTouches.length; i++){\n\t\t\t\tvar touch = event.changedTouches[i];\n\t\t\t\t\n\t\t\t\tvar x = getX(touch);\n\t\t\t\tvar y = getY(touch);\n\t\t\t\t\n\t\t\t\tvar state;\n\t\t\t\tif(ctx.leftState.identifier === touch.identifier){\n\t\t\t\t\tstate = ctx.leftState;\n\t\t\t\t} else if(ctx.rightState.identifier === touch.identifier){\n\t\t\t\t\tstate = ctx.rightState;\n\t\t\t\t} else {\n\t\t\t\t\treturn;\n\t\t\t\t}\n\t\t\t\t\n\t\t\t\tstate.x = x;\n\t\t\t\tstate.y = y;\n\t\t\t\t\n\t\t\t\tpositionsUpdated();\n\t\t\t}\n\t\t},\n\t\t\n\t\ttouchend: function(event){\n\t\t\tfor(var i=0; i<event.changedTouches.length; i++){\n\t\t\t\tvar touch = event.changedTouches[i];\n\t\t\t\t\n\t\t\t\tvar x = getX(touch);\n\t\t\t\tvar y = getY(touch);\n\t\t\t\t\n\t\t\t\tvar state;\n\t\t\t\tif(ctx.leftState.identifier === touch.identifier){\n\t\t\t\t\tstate = ctx.leftState;\n\t\t\t\t} else if(ctx.rightState.identifier === touch.identifier){\n\t\t\t\t\tstate = ctx.rightState;\n\t\t\t\t} else {\n\t\t\t\t\treturn;\n\t\t\t\t}\n\t\t\t\t\n\t\t\t\tstate.x = x;\n\t\t\t\tstate.y = y;\n\t\t\t\tstate.identifier = -1;\n\t\t\t\tpositionsUpdated();\n\t\t\t}\n\t\t}\n\t};\n\tfor(var key in listeners){\n\t\twindow.addEventListener(key, listeners[key]);\n\t}\n};\n\nvar cleanup = function(args, ctx, goo) {\n\tfor(var key in ctx.listeners){\n\t\twindow.addEventListener(key, ctx.listeners[key]);\n\t}\n};\n\nvar update = function(args, ctx, goo) {\n\n};\n\nvar parameters = [];\n\n/*\nfunction VirtualJoyStick(element, settings){\n\tthis.element = element;\n\tvar that = this;\n\t\n\tthis.state = {\n\t\tx: 0,\n\t\ty: 0,\n\t\tstartX: 0,\n\t\tstartY: 0,\n\t\tleftStickX: 0,\n\t\tleftStickY: 0,\n\t\trightButtonDown: false\n\t};\n\tthis.lastState = JSON.parse(JSON.stringify(this.state));\n\t\n\tvar changeEvent = this.changeEvent = { type: 'change' };\n\t\n\tvar listeners = this.listeners = {\n\t\ttouchstart: function(event){\n\t\t\tfor(var i=0; i<event.changedTouches.length; i++){\n\t\t\t\tvar touch = event.changedTouches[i];\n\t\t\t\tvar x = touch.clientX;\n\t\t\t\tvar y = touch.clientY;\n\t\t\t\t\n\t\t\t\t// console.log('start', i, touch.identifier)\n\t\t\t\tif(x / window.innerWidth < 0.5){\n\t\t\t\t\tthat.state.startX = x;\n\t\t\t\t\tthat.state.startY = y;\n\t\t\t\t\tthat.setState(x, y);\n\t\t\t\t\tthat.stickIdentifyer = touch.identifier;\n\t\t\t\t} else {\n\t\t\t\t\tthat.state.rightButtonDown = true;\n\t\t\t\t\tthat.buttonIdentifyer = touch.identifier;\n\t\t\t\t}\n\t\t\t}\n\t\t},\n\t\ttouchmove: function(event){\n\t\t\tfor(var i=0; i<event.changedTouches.length; i++){\n\t\t\t\tvar touch = event.changedTouches[i];\n\t\t\t\tvar x = touch.clientX;\n\t\t\t\tvar y = touch.clientY;\n\t\t\t\t// console.log('move', i, touch.identifier)\n\t\t\t\tif(touch.identifier === that.stickIdentifyer){\n\t\t\t\t\tthat.setState(x, y);\n\t\t\t\t}\n\t\t\t}\n\t\t},\n\t\ttouchend: function(event){\n\t\t\tfor(var i=0; i<event.changedTouches.length; i++){\n\t\t\t\tvar touch = event.changedTouches[i];\n\t\t\t\tvar x = touch.clientX;\n\t\t\t\tvar y = touch.clientY;\n\t\t\t\t// console.log('end', i, touch.identifier)\n\t\t\t\tif(touch.identifier === that.stickIdentifyer){\n\t\t\t\t\tthat.state.leftStickX = 0;\n\t\t\t\t\tthat.state.leftStickY = 0;\n\t\t\t\t\tthat.stickIdentifyer = -1;\n\t\t\t\t} else if(touch.identifier === that.buttonIdentifyer) {\n\t\t\t\t\tthat.state.rightButtonDown = false;\n\t\t\t\t\tthat.buttonIdentifyer = -1;\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t};\n\tfor(var key in listeners){\n\t\telement.addEventListener(key, listeners[key]);\n\t}\n\tthis._listeners = {};\n}\nVirtualJoyStick.prototype.setState = function(x, y){\n\tvar state = this.state;\n\tstate.x = x;\n\tstate.y = y;\n\tstate.leftStickX = (x - state.startX) / (window.innerWidth * 0.5);\n\tstate.leftStickY = (y - state.startY) / (window.innerHeight * 0.5);\n};\nVirtualJoyStick.prototype.emit = function(event){\n\tvar listeners = this._listeners[event.type];\n\tif(listeners){\n\t\tfor(var i=0; i<listeners.length; i++){\n\t\t\tlisteners[i](event);\n\t\t}\n\t}\n};\nVirtualJoyStick.prototype.on = function(key, func){\n\tif(!this._listeners[key]){\n\t\tthis._listeners[key] = [];\n\t}\n\tthis._listeners[key].push(func);\n};\nVirtualJoyStick.prototype.destroy = function(){\n\tfor(var key in this._listeners){\n\t\tthis.element.removeEventListener(key, ctx.listeners[key]);\n\t}\n};\nVirtualJoyStick.prototype.update = function(){\n\tfor(var key in this.state){\n\t\tif(this.state[key] !== this.lastState[key]){\n\t\t\tthis.changeEvent.key = key;\n\t\t\tthis.emit(this.changeEvent);\n\t\t}\n\t\tthis.lastState[key] = this.state[key];\n\t}\n};*/",
+    "created": "2015-05-08T12:46:41.732667+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "dependencies": {},
+    "id": "a2c14052afb44a73b2221064812ac33e.script",
+    "license": "CC0",
+    "modified": "2015-05-08T12:46:41.732667+00:00",
+    "name": "Touch Control"
+  },
+  "a417ab4bc7da4e10be23327f736f037c.mesh": {
+    "_readOnly": false,
+    "attributes": {
+      "NORMAL": {
+        "dimensions": 3,
+        "value": [
+          4956,
+          363,
+          "float32"
+        ]
+      },
+      "POSITION": {
+        "dimensions": 3,
+        "value": [
+          600,
+          363,
+          "float32"
+        ]
+      },
+      "TANGENT": {
+        "dimensions": 4,
+        "value": [
+          3020,
+          484,
+          "float32"
+        ]
+      },
+      "TEXCOORD0": {
+        "dimensions": 2,
+        "value": [
+          2052,
+          242,
+          "float32"
+        ]
+      }
+    },
+    "binaryRef": "99a221c5174a7be0f768beca2befd3dec7ffc328.bin",
+    "boundingVolume": {
+      "max": [
+        0.0715172290802002,
+        4.316171646118164,
+        0.29696333408355713
+      ],
+      "min": [
+        -0.02747058868408203,
+        3.6916801929473877,
+        -0.2969633936882019
+      ],
+      "type": "BoundingBox"
+    },
+    "created": "2015-05-08T12:46:44.742132+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "id": "a417ab4bc7da4e10be23327f736f037c.mesh",
+    "indexLengths": [
+      600
+    ],
+    "indexModes": [
+      "Triangles"
+    ],
+    "indices": [
+      0,
+      600,
+      "uint8"
+    ],
+    "license": "CC0",
+    "modified": "2015-05-08T12:46:44.742132+00:00",
+    "name": "",
+    "type": "Mesh",
+    "vertexCount": 121
+  },
+  "a4c783d09ac9430a9739a74b4c460cef.script": {
+    "_readOnly": false,
+    "body": "'use strict';\n\nvar setup = function(args, ctx, goo) {\n\tctx.frame = 0;\n};\n\nvar cleanup = function(args, ctx, goo) {\n\tif(ctx.joint){\n\t\tctx.entity.rigidBodyComponent.removeJoint(ctx.joint);\n\t\tctx.entity.rigidBodyComponent.destroyJoint(ctx.joint);\n\t}\n};\n\nvar update = function(args, ctx, goo) {\n\tif(ctx.frame == 1){\n\t\tvar joint = ctx.joint = new goo.BallJoint({\n\t\t\tconnectedEntity: ctx.world.by.name('GroundBody').first(),\n\t\t\tlocalPivot: new goo.Vector3(args.localPivot),\n\t\t\tlocalAxis: new goo.Vector3(args.localAxis)\n\t\t});\n\t\tctx.entity.rigidBodyComponent.addJoint(joint);\n\t\tctx.entity.rigidBodyComponent.initializeJoint(joint);\n\t}\n\tctx.frame++;\n};\n\nvar parameters = [{\n\tkey: 'localPivot',\n\ttype: 'vec3',\n\tdefault: [0.5, 0, 0]\n},{\n\tkey: 'localAxis',\n\ttype: 'vec3',\n\tdefault: [0, 1, 0]\n}];",
+    "created": "2015-05-08T12:46:45.809262+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "dependencies": {},
+    "id": "a4c783d09ac9430a9739a74b4c460cef.script",
+    "license": "CC0",
+    "modified": "2015-05-08T12:46:45.809262+00:00",
+    "name": "Ball Joint"
+  },
+  "a58b7c15a17f49e6b70746d93d81b3e1.texture": {
+    "_readOnly": false,
+    "anisotropy": 1,
+    "created": "2015-05-08T12:46:42.300867+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "flipY": true,
+    "generateMipmaps": true,
+    "id": "a58b7c15a17f49e6b70746d93d81b3e1.texture",
+    "imageRef": "ae08154d261369a26fdaa3827401f7b065e1acb2.png",
+    "license": "CC0",
+    "magFilter": "Bilinear",
+    "minFilter": "Trilinear",
+    "modified": "2015-05-08T12:46:42.300867+00:00",
+    "name": "1x1white.png",
+    "offset": [
+      0,
+      0
+    ],
+    "repeat": [
+      1,
+      1
+    ],
+    "wrapS": "Repeat",
+    "wrapT": "Repeat"
+  },
+  "a9d93073ccc142ab9ee618fdc4cd0e51.entity": {
+    "_readOnly": false,
+    "components": {
+      "rigidBody": {
+        "angularDrag": 0,
+        "angularVelocity": [
+          0,
+          0,
+          0
+        ],
+        "isKinematic": false,
+        "linearDrag": 0,
+        "mass": 1,
+        "velocity": [
+          0,
+          0,
+          0
+        ]
+      },
+      "transform": {
+        "children": {
+          "794af475cedb4dfe8bae69d51a5c9e8e.entity": {
+            "entityRef": "794af475cedb4dfe8bae69d51a5c9e8e.entity",
+            "sortValue": 0
+          },
+          "e6890256eb8242edb9458ff316437bf5.entity": {
+            "entityRef": "e6890256eb8242edb9458ff316437bf5.entity",
+            "sortValue": 1
+          }
+        },
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          0.4,
+          0,
+          -1
+        ]
+      }
+    },
+    "created": "2015-05-08T12:46:43.409947+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "hidden": false,
+    "id": "a9d93073ccc142ab9ee618fdc4cd0e51.entity",
+    "license": "CC0",
+    "modified": "2015-05-08T12:46:43.409947+00:00",
+    "name": "Glove1",
+    "static": false,
+    "tags": {}
+  },
+  "b1df5981c13349dc9af0a7c067600178.entity": {
+    "_readOnly": false,
+    "components": {
+      "meshData": {
+        "shape": "Quad"
+      },
+      "meshRenderer": {
+        "castShadows": true,
+        "cullMode": "Dynamic",
+        "materials": {
+          "931335db8be94d26bd5b30a1eba23022.material": {
+            "materialRef": "931335db8be94d26bd5b30a1eba23022.material",
+            "sortValue": 0
+          }
+        },
+        "receiveShadows": true,
+        "reflectable": true
+      },
+      "transform": {
+        "rotation": [
+          -90.00000250447816,
+          -179.999991348578,
+          0
+        ],
+        "scale": [
+          114.21498107910156,
+          114.21498107910156,
+          114.21498107910156
+        ],
+        "translation": [
+          0,
+          1.5394306182861328,
+          0
+        ]
+      }
+    },
+    "created": "2015-05-08T12:46:42.036837+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "hidden": false,
+    "id": "b1df5981c13349dc9af0a7c067600178.entity",
+    "license": "CC0",
+    "modified": "2015-05-08T12:46:42.036837+00:00",
+    "name": "Quad 2",
+    "static": false,
+    "tags": {}
+  },
+  "b5d528f98b914ded8931f4f386836ddd.texture": {
+    "_readOnly": false,
+    "anisotropy": 1,
+    "created": "2015-05-08T12:46:44.851175+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "flipY": false,
+    "generateMipmaps": true,
+    "id": "b5d528f98b914ded8931f4f386836ddd.texture",
+    "imageRef": "c6227f0947b664e39da36dbbd2f506fc245cc3e2.png",
+    "license": "CC0",
+    "lodBias": 0,
+    "magFilter": "Bilinear",
+    "minFilter": "Trilinear",
+    "modified": "2015-05-08T12:46:44.851175+00:00",
+    "name": "env_011.png 2",
+    "offset": [
+      0,
+      0
+    ],
+    "repeat": [
+      1,
+      1
+    ],
+    "wrapS": "Repeat",
+    "wrapT": "Repeat"
+  },
+  "b623bfa20b354597b1c7a11ca21a4233.entity": {
+    "_readOnly": false,
+    "components": {
+      "collider": {
+        "friction": 0.3,
+        "isTrigger": true,
+        "restitution": 0,
+        "shape": "Cylinder",
+        "shapeOptions": {
+          "halfExtents": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "height": 1.5,
+          "radius": 0.29
+        }
+      },
+      "sound": {
+        "sounds": {
+          "8d9829b5f16944099ad419ac61e8fec7.sound": {
+            "sortValue": 0,
+            "soundRef": "8d9829b5f16944099ad419ac61e8fec7.sound"
+          }
+        },
+        "volume": 1
+      },
+      "stateMachine": {
+        "machines": {
+          "dc0cea4735654cae9806fd99a26baf6a.machine": {
+            "machineRef": "dc0cea4735654cae9806fd99a26baf6a.machine",
+            "sortValue": 0
+          }
+        }
+      },
+      "transform": {
+        "rotation": [
+          -91.06241110911697,
+          0,
+          0
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          -1.0185050314248656E-7,
+          -0.05696255713701248,
+          0.0029310849495232105
+        ]
+      }
+    },
+    "created": "2015-05-08T12:46:45.961163+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "hidden": false,
+    "id": "b623bfa20b354597b1c7a11ca21a4233.entity",
+    "license": "CC0",
+    "modified": "2015-05-08T12:46:45.961163+00:00",
+    "name": "Trigger",
+    "static": false,
+    "tags": {}
+  },
+  "b849b38363694acbb6952d4bc906ae7d.material": {
+    "_readOnly": false,
+    "blendState": {
+      "blendDst": "OneMinusSrcAlphaFactor",
+      "blendEquation": "AddEquation",
+      "blendSrc": "SrcAlphaFactor",
+      "blending": "NoBlending"
+    },
+    "created": "2015-05-08T12:46:44.800445+00:00",
+    "cullState": {
+      "cullFace": "Back",
+      "enabled": true,
+      "frontFace": "CCW"
+    },
+    "dataModelVersion": 2,
+    "deleted": false,
+    "depthState": {
+      "enabled": true,
+      "write": true
+    },
+    "dualTransparency": false,
+    "flat": false,
+    "id": "b849b38363694acbb6952d4bc906ae7d.material",
+    "license": "CC0",
+    "modified": "2015-05-08T13:33:19.705889+00:00",
+    "name": "lambert1",
+    "renderQueue": -1,
+    "shaderRef": "GOO_ENGINE_SHADERS/uber",
+    "texturesMapping": {},
+    "uniforms": {
+      "discardThreshold": {
+        "enabled": true,
+        "value": 0.1
+      },
+      "etaRatio": {
+        "enabled": true,
+        "value": -0.5
+      },
+      "fresnel": {
+        "enabled": true,
+        "value": 1
+      },
+      "materialAmbient": {
+        "enabled": true,
+        "value": [
+          0,
+          0,
+          0,
+          1
+        ]
+      },
+      "materialDiffuse": {
+        "enabled": true,
+        "value": [
+          0.4041666666666667,
+          0.4041666666666667,
+          0.4041666666666667,
+          1
+        ]
+      },
+      "materialEmissive": {
+        "enabled": true,
+        "value": [
+          0,
+          0,
+          0,
+          1
+        ]
+      },
+      "materialSpecular": {
+        "enabled": true,
+        "value": [
+          0,
+          0,
+          0,
+          1
+        ]
+      },
+      "materialSpecularPower": {
+        "enabled": true,
+        "value": 1
+      },
+      "normalMultiplier": {
+        "enabled": true,
+        "value": 1
+      },
+      "opacity": {
+        "enabled": false,
+        "value": 1
+      },
+      "reflectivity": {
+        "enabled": true,
+        "value": 0.56
+      },
+      "refractivity": {
+        "enabled": false,
+        "value": 0
+      },
+      "vertexColorAmount": {
+        "enabled": true,
+        "value": 1
+      },
+      "wrapSettings": {
+        "enabled": true,
+        "value": [
+          0,
+          0
+        ]
+      }
+    },
+    "wireframe": false
+  },
+  "bbde83242495478a818a8bbf62d550cd.entity": {
+    "_readOnly": false,
+    "components": {
+      "meshData": {
+        "shape": "Sphere",
+        "shapeOptions": {
+          "radialSamples": 16,
+          "radius": 0.5,
+          "textureMode": "Projected",
+          "zSamples": 16
+        }
+      },
+      "meshRenderer": {
+        "castShadows": true,
+        "cullMode": "Dynamic",
+        "materials": {
+          "7dae1a8b303c4ce39915a519df87331e.material": {
+            "materialRef": "7dae1a8b303c4ce39915a519df87331e.material",
+            "sortValue": 0
+          }
+        },
+        "receiveShadows": true,
+        "reflectable": true
+      },
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          1000,
+          1000,
+          1000
+        ],
+        "translation": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    "created": "2015-05-08T12:46:46.010244+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "hidden": false,
+    "id": "bbde83242495478a818a8bbf62d550cd.entity",
+    "license": "CC0",
+    "modified": "2015-05-08T12:46:46.010244+00:00",
+    "name": "SkySphere",
+    "static": false,
+    "tags": {}
+  },
+  "bd134ea4abeb4746834dbe58f639296c.entity": {
+    "_readOnly": false,
+    "components": {
+      "meshData": {
+        "meshRef": "a417ab4bc7da4e10be23327f736f037c.mesh"
+      },
+      "meshRenderer": {
+        "castShadows": true,
+        "cullMode": "Dynamic",
+        "materials": {
+          "f7c2c463742443a0817d94e1d92f5e81.material": {
+            "materialRef": "f7c2c463742443a0817d94e1d92f5e81.material",
+            "sortValue": 0
+          }
+        },
+        "receiveShadows": true,
+        "reflectable": true
+      },
+      "transform": {
+        "rotation": [
+          0,
+          -93.2834793441784,
+          0
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    "created": "2015-05-08T12:46:43.929017+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "hidden": false,
+    "id": "bd134ea4abeb4746834dbe58f639296c.entity",
+    "license": "CC0",
+    "modified": "2015-05-08T12:46:43.929017+00:00",
+    "name": "Metalring",
+    "static": false,
+    "tags": {}
+  },
+  "c1157f78fe224b7b9fc84c87bfbd3dd7.mesh": {
+    "_readOnly": false,
+    "attributes": {
+      "NORMAL": {
+        "dimensions": 3,
+        "value": [
+          471672,
+          2460,
+          "float32"
+        ]
+      },
+      "POSITION": {
+        "dimensions": 3,
+        "value": [
+          442152,
+          2460,
+          "float32"
+        ]
+      },
+      "TANGENT": {
+        "dimensions": 4,
+        "value": [
+          458552,
+          3280,
+          "float32"
+        ]
+      },
+      "TEXCOORD0": {
+        "dimensions": 2,
+        "value": [
+          451992,
+          1640,
+          "float32"
+        ]
+      }
+    },
+    "binaryRef": "3fb0570cc160fe54ff8255460a5eddc6610b6708.bin",
+    "boundingVolume": {
+      "max": [
+        56.27039337158203,
+        0.335968017578125,
+        55.99509048461914
+      ],
+      "min": [
+        -56.2703971862793,
+        -32.097869873046875,
+        -55.99509048461914
+      ],
+      "type": "BoundingBox"
+    },
+    "created": "2015-05-08T12:46:42.774634+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "id": "c1157f78fe224b7b9fc84c87bfbd3dd7.mesh",
+    "indexLengths": [
+      1788
+    ],
+    "indexModes": [
+      "Triangles"
+    ],
+    "indices": [
+      438576,
+      1788,
+      "uint16"
+    ],
+    "license": "CC0",
+    "modified": "2015-05-08T12:46:42.774634+00:00",
+    "name": "",
+    "type": "Mesh",
+    "vertexCount": 820
+  },
+  "c4dec0d0c0624d2395aa23dab8bf6b62.material": {
+    "_readOnly": false,
+    "blendState": {
+      "blendDst": "OneMinusSrcAlphaFactor",
+      "blendEquation": "AddEquation",
+      "blendSrc": "SrcAlphaFactor",
+      "blending": "NoBlending"
+    },
+    "created": "2015-05-08T12:46:44.639236+00:00",
+    "cullState": {
+      "cullFace": "Front",
+      "enabled": true,
+      "frontFace": "CCW"
+    },
+    "dataModelVersion": 2,
+    "deleted": false,
+    "depthState": {
+      "enabled": true,
+      "write": true
+    },
+    "dualTransparency": false,
+    "flat": false,
+    "id": "c4dec0d0c0624d2395aa23dab8bf6b62.material",
+    "license": "CC0",
+    "modified": "2015-05-08T12:46:44.639236+00:00",
+    "name": "rightgloveMat",
+    "renderQueue": -1,
+    "shaderRef": "GOO_ENGINE_SHADERS/uber",
+    "texturesMapping": {
+      "LOCAL_ENVIRONMENT": {
+        "enabled": true,
+        "textureRef": "2301a4ed7e7e416d8ffa7d7f8fafe97e.texture"
+      }
+    },
+    "uniforms": {
+      "discardThreshold": {
+        "enabled": true,
+        "value": 0.1
+      },
+      "etaRatio": {
+        "enabled": true,
+        "value": -0.5
+      },
+      "fresnel": {
+        "enabled": true,
+        "value": 0.69
+      },
+      "materialAmbient": {
+        "enabled": true,
+        "value": [
+          0.18158111572265623,
+          0,
+          0,
+          1
+        ]
+      },
+      "materialDiffuse": {
+        "enabled": true,
+        "value": [
+          0.5254902243614197,
+          0.0313725508749485,
+          0.0313725508749485,
+          1
+        ]
+      },
+      "materialEmissive": {
+        "enabled": true,
+        "value": [
+          0,
+          0,
+          0,
+          1
+        ]
+      },
+      "materialSpecular": {
+        "enabled": true,
+        "value": [
+          0,
+          0,
+          0,
+          1
+        ]
+      },
+      "materialSpecularPower": {
+        "enabled": true,
+        "value": 1024
+      },
+      "normalMultiplier": {
+        "enabled": true,
+        "value": 1
+      },
+      "opacity": {
+        "enabled": false,
+        "value": 1
+      },
+      "reflectivity": {
+        "enabled": true,
+        "value": 0.84
+      },
+      "refractivity": {
+        "enabled": false,
+        "value": 0
+      },
+      "vertexColorAmount": {
+        "enabled": true,
+        "value": 1
+      },
+      "wrapSettings": {
+        "enabled": true,
+        "value": [
+          0,
+          0
+        ]
+      }
+    },
+    "wireframe": false
+  },
+  "ccc68ad1def1413598842afb7e439fb5.machine": {
+    "_readOnly": false,
+    "created": "2015-05-08T12:46:45.286308+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "id": "ccc68ad1def1413598842afb7e439fb5.machine",
+    "initialState": "d802e7f1075d42bd998ecebdcaf6efe7.state",
+    "license": "CC0",
+    "modified": "2015-05-08T12:46:45.286308+00:00",
+    "name": "Behavior",
+    "states": {
+      "9e08e969e2d44726a12efe0ea5a9f33c.state": {
+        "actions": {
+          "6a9065d7c7144c99b78beced5dc866f3.action": {
+            "id": "6a9065d7c7144c99b78beced5dc866f3.action",
+            "name": "Tween Rotate",
+            "options": {
+              "easing1": "Linear",
+              "easing2": "In",
+              "relative": true,
+              "time": 1000,
+              "to": [
+                22,
+                0,
+                0
+              ],
+              "transitions": {
+                "complete": "3a964ec5d6fa4b8da05763a7f425b859.transition"
+              }
+            },
+            "sortValue": 0,
+            "type": "Tween Rotation"
+          }
+        },
+        "id": "9e08e969e2d44726a12efe0ea5a9f33c.state",
+        "name": "State 1",
+        "sortValue": 2,
+        "transitions": {
+          "3a964ec5d6fa4b8da05763a7f425b859.transition": {
+            "id": "3a964ec5d6fa4b8da05763a7f425b859.transition",
+            "name": "On Completion",
+            "sortValue": 0
+          }
+        }
+      },
+      "d802e7f1075d42bd998ecebdcaf6efe7.state": {
+        "actions": {
+          "811abe3e8f4a4c828b1341e3eac923b6.action": {
+            "id": "811abe3e8f4a4c828b1341e3eac923b6.action",
+            "name": "Listen",
+            "options": {
+              "channel": "hit1",
+              "transitions": {
+                "transition": "13f14b2e65b849a9bf8fcfc1da13c9a7.transition"
+              }
+            },
+            "sortValue": 0,
+            "type": "Transition on Message"
+          }
+        },
+        "id": "d802e7f1075d42bd998ecebdcaf6efe7.state",
+        "name": "State",
+        "sortValue": 0,
+        "transitions": {
+          "13f14b2e65b849a9bf8fcfc1da13c9a7.transition": {
+            "id": "13f14b2e65b849a9bf8fcfc1da13c9a7.transition",
+            "name": "To",
+            "sortValue": 0,
+            "targetState": "e613761e1b1c4e818f5c586e98db75e6.state"
+          }
+        }
+      },
+      "e613761e1b1c4e818f5c586e98db75e6.state": {
+        "actions": {
+          "6a4d226b5407455592060035dd569fc2.action": {
+            "id": "6a4d226b5407455592060035dd569fc2.action",
+            "name": "Wait",
+            "options": {
+              "randomTime": 0,
+              "transitions": {
+                "timeUp": "4157fd11dbbb49c3bf9fe17255baa014.transition"
+              },
+              "waitTime": "200"
+            },
+            "sortValue": 0,
+            "type": "Wait"
+          }
+        },
+        "id": "e613761e1b1c4e818f5c586e98db75e6.state",
+        "name": "WaitHit1",
+        "sortValue": 1,
+        "transitions": {
+          "4157fd11dbbb49c3bf9fe17255baa014.transition": {
+            "id": "4157fd11dbbb49c3bf9fe17255baa014.transition",
+            "name": "Time up",
+            "sortValue": 0
+          }
+        }
+      },
+      "f39f5f850da54d1ab1089bcd850251c2.state": {
+        "id": "f39f5f850da54d1ab1089bcd850251c2.state",
+        "name": "State 2",
+        "sortValue": 3
+      }
+    }
+  },
+  "d07de10c3bca40ddba5ea607af3dc6e3.mesh": {
+    "_readOnly": false,
+    "attributes": {
+      "NORMAL": {
+        "dimensions": 3,
+        "value": [
+          17196,
+          783,
+          "float32"
+        ]
+      },
+      "POSITION": {
+        "dimensions": 3,
+        "value": [
+          7800,
+          783,
+          "float32"
+        ]
+      },
+      "TANGENT": {
+        "dimensions": 4,
+        "value": [
+          13020,
+          1044,
+          "float32"
+        ]
+      },
+      "TEXCOORD0": {
+        "dimensions": 2,
+        "value": [
+          10932,
+          522,
+          "float32"
+        ]
+      }
+    },
+    "binaryRef": "99a221c5174a7be0f768beca2befd3dec7ffc328.bin",
+    "boundingVolume": {
+      "max": [
+        0.9255361557006836,
+        7.436350345611572,
+        0.8673334121704102
+      ],
+      "min": [
+        -0.5767292976379395,
+        2.3628592491149902,
+        -0.8673334121704102
+      ],
+      "type": "BoundingBox"
+    },
+    "created": "2015-05-08T12:46:44.482481+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "id": "d07de10c3bca40ddba5ea607af3dc6e3.mesh",
+    "indexLengths": [
+      696
+    ],
+    "indexModes": [
+      "Triangles"
+    ],
+    "indices": [
+      6408,
+      696,
+      "uint16"
+    ],
+    "license": "CC0",
+    "modified": "2015-05-08T12:46:44.482481+00:00",
+    "name": "",
+    "type": "Mesh",
+    "vertexCount": 261
+  },
+  "d1356acd57f04423a48bd2dde3e40f91.entity": {
+    "_readOnly": false,
+    "components": {
+      "meshData": {
+        "meshRef": "40d2d30618634ceba0e4a7afe34faefc.mesh"
+      },
+      "meshRenderer": {
+        "castShadows": true,
+        "cullMode": "Dynamic",
+        "materials": {
+          "220c1a160ecc40a1b11dcd1a5892f5db.material": {
+            "materialRef": "220c1a160ecc40a1b11dcd1a5892f5db.material",
+            "sortValue": 0
+          }
+        },
+        "receiveShadows": true,
+        "reflectable": true
+      },
+      "transform": {
+        "rotation": [
+          0,
+          -93.2834793441784,
+          0
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    "created": "2015-05-08T12:46:45.756971+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "hidden": false,
+    "id": "d1356acd57f04423a48bd2dde3e40f91.entity",
+    "license": "CC0",
+    "modified": "2015-05-08T12:46:45.756971+00:00",
+    "name": "Sack",
+    "static": false,
+    "tags": {}
+  },
+  "d16f2731a35b4daf8807b1d73fc81be8.entity": {
+    "_readOnly": false,
+    "components": {
+      "rigidBody": {
+        "angularDrag": 0,
+        "angularVelocity": [
+          0,
+          0,
+          0
+        ],
+        "isKinematic": true,
+        "linearDrag": 0,
+        "mass": 0,
+        "velocity": [
+          0,
+          0,
+          0
+        ]
+      },
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    "created": "2015-05-08T12:46:41.677983+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "hidden": false,
+    "id": "d16f2731a35b4daf8807b1d73fc81be8.entity",
+    "license": "CC0",
+    "modified": "2015-05-08T12:46:41.677983+00:00",
+    "name": "GroundBody",
+    "static": false,
+    "tags": {}
+  },
+  "d7e9ab76962f4964ad9a2b839f2c20ae.machine": {
+    "_readOnly": false,
+    "created": "2015-05-08T12:46:44.261353+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "id": "d7e9ab76962f4964ad9a2b839f2c20ae.machine",
+    "initialState": "bc1c9443a5644554a2c58bb7d6b91f47.state",
+    "license": "CC0",
+    "modified": "2015-05-08T12:46:44.261353+00:00",
+    "name": "Behavior",
+    "states": {
+      "bc1c9443a5644554a2c58bb7d6b91f47.state": {
+        "actions": {
+          "18a88c4632894e1c8a1d895a0009a9a9.action": {
+            "id": "18a88c4632894e1c8a1d895a0009a9a9.action",
+            "name": "Sound Fade In",
+            "options": {
+              "sound": "3b6d9a602dfa493083f2d3fbfb4f9ea8.sound",
+              "time": "0",
+              "transitions": {
+                "complete": "b5efd084dcde450e8040e7e119170983.transition"
+              }
+            },
+            "sortValue": 0,
+            "type": "Sound Fade In"
+          },
+          "be5f114983c5404ea20b9fe925993fc0.action": {
+            "id": "be5f114983c5404ea20b9fe925993fc0.action",
+            "name": "Wait",
+            "options": {
+              "randomTime": 0,
+              "transitions": {
+                "timeUp": "f7aafbb3deb442df9004eb35026c9fc7.transition"
+              },
+              "waitTime": "17000"
+            },
+            "sortValue": 1,
+            "type": "Wait"
+          }
+        },
+        "id": "bc1c9443a5644554a2c58bb7d6b91f47.state",
+        "name": "State",
+        "sortValue": 0,
+        "transitions": {
+          "b5efd084dcde450e8040e7e119170983.transition": {
+            "id": "b5efd084dcde450e8040e7e119170983.transition",
+            "name": "On Completion",
+            "sortValue": 0
+          },
+          "f7aafbb3deb442df9004eb35026c9fc7.transition": {
+            "id": "f7aafbb3deb442df9004eb35026c9fc7.transition",
+            "name": "Time up",
+            "sortValue": 1,
+            "targetState": "bc1c9443a5644554a2c58bb7d6b91f47.state"
+          }
+        }
+      }
+    }
+  },
+  "db9f2a12e13b471092aa3ef1144348c7.texture": {
+    "_readOnly": false,
+    "anisotropy": 1,
+    "created": "2015-05-08T12:46:45.654278+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "flipY": true,
+    "generateMipmaps": true,
+    "id": "db9f2a12e13b471092aa3ef1144348c7.texture",
+    "imageRef": "fcd2dfcbeef2e6158761723e830b8d3672f70a36.png",
+    "license": "CC0",
+    "magFilter": "Bilinear",
+    "minFilter": "Trilinear",
+    "modified": "2015-05-08T12:46:45.654278+00:00",
+    "name": "sackDiffuse9.png 5",
+    "offset": [
+      0,
+      0
+    ],
+    "repeat": [
+      1,
+      1
+    ],
+    "wrapS": "Repeat",
+    "wrapT": "Repeat"
+  },
+  "dc0cea4735654cae9806fd99a26baf6a.machine": {
+    "_readOnly": false,
+    "created": "2015-05-08T12:46:41.830013+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "id": "dc0cea4735654cae9806fd99a26baf6a.machine",
+    "initialState": "742e8d1469e143d4a9687cab3f75a07f.state",
+    "license": "CC0",
+    "modified": "2015-05-08T12:46:41.830013+00:00",
+    "name": "Behavior",
+    "states": {
+      "742e8d1469e143d4a9687cab3f75a07f.state": {
+        "actions": {
+          "b765ef04286a4fed8b3ecd96e6c5dda4.action": {
+            "id": "b765ef04286a4fed8b3ecd96e6c5dda4.action",
+            "name": "TriggerEnter",
+            "options": {
+              "transitions": {
+                "enter": "a55623e1e3374c3a9443064c32a38efd.transition"
+              }
+            },
+            "sortValue": 0,
+            "type": "TriggerEnter"
+          }
+        },
+        "id": "742e8d1469e143d4a9687cab3f75a07f.state",
+        "name": "WaitForEnter",
+        "sortValue": 0,
+        "transitions": {
+          "a55623e1e3374c3a9443064c32a38efd.transition": {
+            "id": "a55623e1e3374c3a9443064c32a38efd.transition",
+            "name": "On enter",
+            "sortValue": 0,
+            "targetState": "9881ff3494c2444395ff79929c6782b9.state"
+          }
+        }
+      },
+      "9881ff3494c2444395ff79929c6782b9.state": {
+        "actions": {
+          "95b61036a5c8491cbb7ff391edd08523.action": {
+            "id": "95b61036a5c8491cbb7ff391edd08523.action",
+            "name": "TriggerLeave",
+            "options": {
+              "transitions": {
+                "leave": "308b4784f098485394d3929fcf243545.transition"
+              }
+            },
+            "sortValue": 0,
+            "type": "TriggerLeave"
+          },
+          "d8fcd13dade646bbae27e1a2a66c7459.action": {
+            "id": "d8fcd13dade646bbae27e1a2a66c7459.action",
+            "name": "Sound Fade In",
+            "options": {
+              "sound": "8d9829b5f16944099ad419ac61e8fec7.sound",
+              "time": 1000,
+              "transitions": {
+                "complete": "1a8613f8bb92438e83638528ff3d5168.transition"
+              }
+            },
+            "sortValue": 1,
+            "type": "Sound Fade In"
+          }
+        },
+        "id": "9881ff3494c2444395ff79929c6782b9.state",
+        "name": "WaitForLeave",
+        "sortValue": 1,
+        "transitions": {
+          "1a8613f8bb92438e83638528ff3d5168.transition": {
+            "id": "1a8613f8bb92438e83638528ff3d5168.transition",
+            "name": "On Completion",
+            "sortValue": 1
+          },
+          "308b4784f098485394d3929fcf243545.transition": {
+            "id": "308b4784f098485394d3929fcf243545.transition",
+            "name": "On leave",
+            "sortValue": 0,
+            "targetState": "742e8d1469e143d4a9687cab3f75a07f.state"
+          }
+        }
+      }
+    }
+  },
+  "dcc698f34f994f49809df837f1ba6e5c.entity": {
+    "_readOnly": false,
+    "components": {
+      "camera": {
+        "aspect": 1,
+        "far": 1000,
+        "followEditorCam": false,
+        "fov": 45,
+        "lockedRatio": false,
+        "near": 1,
+        "projectionMode": "Perspective",
+        "size": 5
+      },
+      "script": {
+        "scripts": {
+          "30141545e5284738ac553981d4fe8a06.scriptInstance": {
+            "name": "OrbitNPan",
+            "options": {
+              "clampAzimuth": false,
+              "drag": 0.9,
+              "dragButton": "Left",
+              "enabled": false,
+              "lookAtDistance": 2.917388439178467,
+              "maxAscent": 89.95,
+              "maxAzimuth": 270,
+              "maxZoomDistance": 1000,
+              "minAscent": -89,
+              "minAzimuth": 90,
+              "minZoomDistance": 1,
+              "orbitSpeed": 0.005,
+              "panButton": "Right",
+              "smoothness": 0.4,
+              "whenUsed": true,
+              "zoomSpeed": 1
+            },
+            "scriptRef": "GOO_ENGINE_SCRIPTS/OrbitNPanControlScript",
+            "sortValue": 0
+          },
+          "5dcc4204e5fc4696b80ce7ee2baf81ac.scriptInstance": {
+            "name": "Custom script",
+            "options": {
+              "enabled": true,
+              "entity": {
+                "entityRef": "d1356acd57f04423a48bd2dde3e40f91.entity"
+              }
+            },
+            "scriptRef": "9fbe620a132b473995cdb9f1baec27f1.script",
+            "sortValue": 1
+          },
+          "cb4925c6ecb342fb823907532429646c.scriptInstance": {
+            "name": "Custom script",
+            "options": {
+              "asd": "",
+              "enabled": true
+            },
+            "scriptRef": "18ac4b0f87624c1e985537fdb3d6fe06.script",
+            "sortValue": 2
+          }
+        }
+      },
+      "sound": {
+        "reverb": 0,
+        "sounds": {
+          "3b6d9a602dfa493083f2d3fbfb4f9ea8.sound": {
+            "sortValue": 0,
+            "soundRef": "3b6d9a602dfa493083f2d3fbfb4f9ea8.sound"
+          }
+        },
+        "volume": 0.05
+      },
+      "stateMachine": {
+        "machines": {
+          "d7e9ab76962f4964ad9a2b839f2c20ae.machine": {
+            "machineRef": "d7e9ab76962f4964ad9a2b839f2c20ae.machine",
+            "sortValue": 0
+          }
+        }
+      },
+      "transform": {
+        "rotation": [
+          -10.996060709907868,
+          179.999991348578,
+          0
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          2.849583857766902E-8,
+          1.0315731763839722,
+          -3.0545599460601807
+        ]
+      }
+    },
+    "created": "2015-05-08T12:46:42.457944+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "hidden": false,
+    "id": "dcc698f34f994f49809df837f1ba6e5c.entity",
+    "license": "CC0",
+    "modified": "2015-05-08T15:09:02.470495+00:00",
+    "name": "Default Camera",
+    "static": false,
+    "tags": {}
+  },
+  "de97d159068b41b7b74408e9e6331cec.material": {
+    "_readOnly": false,
+    "blendState": {
+      "blendDst": "OneMinusSrcAlphaFactor",
+      "blendEquation": "AddEquation",
+      "blendSrc": "SrcAlphaFactor",
+      "blending": "NoBlending"
+    },
+    "created": "2015-05-08T12:46:41.575555+00:00",
+    "cullState": {
+      "cullFace": "Back",
+      "enabled": true,
+      "frontFace": "CCW"
+    },
+    "dataModelVersion": 2,
+    "deleted": false,
+    "depthState": {
+      "enabled": true,
+      "write": true
+    },
+    "dualTransparency": false,
+    "flat": false,
+    "id": "de97d159068b41b7b74408e9e6331cec.material",
+    "license": "CC0",
+    "modified": "2015-05-08T12:46:41.575555+00:00",
+    "name": "rightgloveMat 2",
+    "renderQueue": -1,
+    "shaderRef": "GOO_ENGINE_SHADERS/uber",
+    "texturesMapping": {
+      "LOCAL_ENVIRONMENT": {
+        "enabled": true,
+        "textureRef": "1792f1db381c4546b75edb5d1b93475e.texture"
+      }
+    },
+    "uniforms": {
+      "discardThreshold": {
+        "enabled": true,
+        "value": 0.1
+      },
+      "etaRatio": {
+        "enabled": true,
+        "value": -0.5
+      },
+      "fresnel": {
+        "enabled": true,
+        "value": 0.69
+      },
+      "materialAmbient": {
+        "enabled": true,
+        "value": [
+          0.18158111572265623,
+          0,
+          0,
+          1
+        ]
+      },
+      "materialDiffuse": {
+        "enabled": true,
+        "value": [
+          0.5254902243614197,
+          0.0313725508749485,
+          0.0313725508749485,
+          1
+        ]
+      },
+      "materialEmissive": {
+        "enabled": true,
+        "value": [
+          0,
+          0,
+          0,
+          1
+        ]
+      },
+      "materialSpecular": {
+        "enabled": true,
+        "value": [
+          0,
+          0,
+          0,
+          1
+        ]
+      },
+      "materialSpecularPower": {
+        "enabled": true,
+        "value": 1024
+      },
+      "normalMultiplier": {
+        "enabled": true,
+        "value": 1
+      },
+      "opacity": {
+        "enabled": false,
+        "value": 1
+      },
+      "reflectivity": {
+        "enabled": true,
+        "value": 0.84
+      },
+      "refractivity": {
+        "enabled": false,
+        "value": 0
+      },
+      "vertexColorAmount": {
+        "enabled": true,
+        "value": 1
+      },
+      "wrapSettings": {
+        "enabled": true,
+        "value": [
+          0,
+          0
+        ]
+      }
+    },
+    "wireframe": false
+  },
+  "e0c49bfee06f49fa9601ad30d73e1f0c.texture": {
+    "_readOnly": false,
+    "anisotropy": 1,
+    "created": "2015-05-08T12:46:42.974095+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "flipY": true,
+    "generateMipmaps": true,
+    "id": "e0c49bfee06f49fa9601ad30d73e1f0c.texture",
+    "imageRef": "3c520e9531fc0d6d2dc296e74d3b38ae86679fe6.png",
+    "license": "CC0",
+    "magFilter": "Bilinear",
+    "minFilter": "Trilinear",
+    "modified": "2015-05-08T12:46:42.974095+00:00",
+    "name": "reflect.png",
+    "offset": [
+      0,
+      0
+    ],
+    "repeat": [
+      1,
+      1
+    ],
+    "wrapS": "Repeat",
+    "wrapT": "Repeat"
+  },
+  "e6890256eb8242edb9458ff316437bf5.entity": {
+    "_readOnly": false,
+    "components": {
+      "collider": {
+        "friction": 0,
+        "isTrigger": false,
+        "restitution": 0,
+        "shape": "Sphere",
+        "shapeOptions": {
+          "halfExtents": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "height": 1,
+          "radius": 0.2
+        }
+      },
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    "created": "2015-05-08T12:46:43.025949+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "hidden": false,
+    "id": "e6890256eb8242edb9458ff316437bf5.entity",
+    "license": "CC0",
+    "modified": "2015-05-08T12:46:43.025949+00:00",
+    "name": "Collider",
+    "static": false,
+    "tags": {}
+  },
+  "eca791dea3674bdda77bfaf9e9693af7.entity": {
+    "_readOnly": false,
+    "components": {
+      "meshData": {
+        "meshRef": "d07de10c3bca40ddba5ea607af3dc6e3.mesh"
+      },
+      "meshRenderer": {
+        "castShadows": true,
+        "cullMode": "Dynamic",
+        "materials": {
+          "74ddecc6cbe04691873a7e5a39c98ce3.material": {
+            "materialRef": "74ddecc6cbe04691873a7e5a39c98ce3.material",
+            "sortValue": 0
+          }
+        },
+        "receiveShadows": true,
+        "reflectable": true
+      },
+      "transform": {
+        "rotation": [
+          0,
+          -93.2834793441784,
+          0
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    "created": "2015-05-08T12:46:42.613151+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "hidden": false,
+    "id": "eca791dea3674bdda77bfaf9e9693af7.entity",
+    "license": "CC0",
+    "modified": "2015-05-08T12:46:42.613151+00:00",
+    "name": "Strap",
+    "static": false,
+    "tags": {}
+  },
+  "f07b108cf27044aeb2db445bbb4ed4eb.mesh": {
+    "_readOnly": false,
+    "attributes": {
+      "NORMAL": {
+        "dimensions": 3,
+        "value": [
+          345780,
+          23199,
+          "float32"
+        ]
+      },
+      "POSITION": {
+        "dimensions": 3,
+        "value": [
+          67392,
+          23199,
+          "float32"
+        ]
+      },
+      "TANGENT": {
+        "dimensions": 4,
+        "value": [
+          222052,
+          30932,
+          "float32"
+        ]
+      },
+      "TEXCOORD0": {
+        "dimensions": 2,
+        "value": [
+          160188,
+          15466,
+          "float32"
+        ]
+      }
+    },
+    "binaryRef": "3fb0570cc160fe54ff8255460a5eddc6610b6708.bin",
+    "boundingVolume": {
+      "max": [
+        51.294952392578125,
+        -7.160100936889648,
+        51.02608871459961
+      ],
+      "min": [
+        -51.206153869628906,
+        -14.691455841064453,
+        -51.15583801269531
+      ],
+      "type": "BoundingBox"
+    },
+    "created": "2015-05-08T12:46:44.533528+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "id": "f07b108cf27044aeb2db445bbb4ed4eb.mesh",
+    "indexLengths": [
+      33696
+    ],
+    "indexModes": [
+      "Triangles"
+    ],
+    "indices": [
+      0,
+      33696,
+      "uint16"
+    ],
+    "license": "CC0",
+    "modified": "2015-05-08T12:46:44.533528+00:00",
+    "name": "",
+    "type": "Mesh",
+    "vertexCount": 7733
+  },
+  "f7c2c463742443a0817d94e1d92f5e81.material": {
+    "_readOnly": false,
+    "blendState": {
+      "blendDst": "OneMinusSrcAlphaFactor",
+      "blendEquation": "AddEquation",
+      "blendSrc": "SrcAlphaFactor",
+      "blending": "NoBlending"
+    },
+    "created": "2015-05-08T12:46:41.411997+00:00",
+    "cullState": {
+      "cullFace": "Back",
+      "enabled": true,
+      "frontFace": "CCW"
+    },
+    "dataModelVersion": 2,
+    "deleted": false,
+    "depthState": {
+      "enabled": true,
+      "write": true
+    },
+    "dualTransparency": false,
+    "flat": false,
+    "id": "f7c2c463742443a0817d94e1d92f5e81.material",
+    "license": "CC0",
+    "modified": "2015-05-08T13:31:02.063386+00:00",
+    "name": "lambert2",
+    "renderQueue": -1,
+    "shaderRef": "GOO_ENGINE_SHADERS/uber",
+    "texturesMapping": {
+      "LOCAL_ENVIRONMENT": {
+        "enabled": true,
+        "textureRef": "b5d528f98b914ded8931f4f386836ddd.texture"
+      }
+    },
+    "uniforms": {
+      "discardThreshold": {
+        "enabled": true,
+        "value": 0.1
+      },
+      "etaRatio": {
+        "enabled": true,
+        "value": -0.5
+      },
+      "fresnel": {
+        "enabled": true,
+        "value": 0.12
+      },
+      "materialAmbient": {
+        "enabled": true,
+        "value": [
+          0.1958333333333333,
+          0.16327604166666665,
+          0.14932291666666664,
+          1
+        ]
+      },
+      "materialDiffuse": {
+        "enabled": true,
+        "value": [
+          0,
+          0,
+          0,
+          1
+        ]
+      },
+      "materialEmissive": {
+        "enabled": true,
+        "value": [
+          0,
+          0,
+          0,
+          1
+        ]
+      },
+      "materialSpecular": {
+        "enabled": true,
+        "value": [
+          1,
+          1,
+          1,
+          1
+        ]
+      },
+      "materialSpecularPower": {
+        "enabled": true,
+        "value": 114.07
+      },
+      "normalMultiplier": {
+        "enabled": true,
+        "value": 1
+      },
+      "opacity": {
+        "enabled": false,
+        "value": 1
+      },
+      "reflectivity": {
+        "enabled": true,
+        "value": 1
+      },
+      "refractivity": {
+        "enabled": false,
+        "value": 0
+      },
+      "vertexColorAmount": {
+        "enabled": true,
+        "value": 1
+      },
+      "wrapSettings": {
+        "enabled": true,
+        "value": [
+          0,
+          0
+        ]
+      }
+    },
+    "wireframe": false
+  },
+  "f7e44d3e6f1c43ebb45d04b6d185bf1f.entity": {
+    "_readOnly": false,
+    "components": {
+      "meshData": {
+        "meshRef": "f07b108cf27044aeb2db445bbb4ed4eb.mesh"
+      },
+      "meshRenderer": {
+        "castShadows": true,
+        "cullMode": "Dynamic",
+        "materials": {
+          "9db2243d302a43ffa171d0e265bca272.material": {
+            "materialRef": "9db2243d302a43ffa171d0e265bca272.material",
+            "sortValue": 0
+          }
+        },
+        "receiveShadows": true,
+        "reflectable": true
+      },
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          0,
+          32.097869873046875,
+          0
+        ]
+      }
+    },
+    "created": "2015-05-08T12:46:45.597270+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "hidden": false,
+    "id": "f7e44d3e6f1c43ebb45d04b6d185bf1f.entity",
+    "license": "CC0",
+    "modified": "2015-05-08T12:46:45.597270+00:00",
+    "name": "rope 2",
+    "static": false,
+    "tags": {}
+  },
+  "fd306f5991ec46cab2f7f87b55da282b.entity": {
+    "_readOnly": false,
+    "components": {
+      "html": {
+        "innerHtml": "<p style=\"background: white; font-size: 18px; padding: 4px; margin: 0;\">\n\tWrite some HTML\n</p>\n\n<!-- Hints:\n + It is not recommended to use <script> tags - they can be evil. Consider using the Script Component instead.\n-->",
+        "useTransformComponent": true
+      },
+      "script": {
+        "scripts": {
+          "2f80fe6ca8764685bdccab61f567a622.scriptInstance": {
+            "name": "Custom script",
+            "options": {
+              "enabled": true
+            },
+            "scriptRef": "69722183c03d46e9877f6aea68c77b01.script",
+            "sortValue": 0
+          }
+        }
+      },
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    "created": "2015-05-08T12:46:42.925479+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "hidden": true,
+    "id": "fd306f5991ec46cab2f7f87b55da282b.entity",
+    "license": "CC0",
+    "modified": "2015-05-08T12:47:11.401636+00:00",
+    "name": "Html Entity",
+    "static": false,
+    "tags": {}
+  },
+  "fe0779157a874ef9ba2d1d9467c1513e.entity": {
+    "_readOnly": false,
+    "components": {
+      "rigidBody": {
+        "angularDrag": 0.1,
+        "angularVelocity": [
+          0,
+          1,
+          0
+        ],
+        "isKinematic": false,
+        "linearDrag": 0.1,
+        "mass": 10,
+        "velocity": [
+          0,
+          0,
+          0
+        ]
+      },
+      "script": {
+        "scripts": {
+          "8f57f8e8f0ee4bc1a23abba1a509c006.scriptInstance": {
+            "name": "Custom script",
+            "options": {
+              "enabled": true,
+              "localAxis": [
+                1,
+                0,
+                0
+              ],
+              "localPivot": [
+                0,
+                4,
+                0
+              ]
+            },
+            "scriptRef": "a4c783d09ac9430a9739a74b4c460cef.script",
+            "sortValue": 0
+          }
+        }
+      },
+      "transform": {
+        "children": {
+          "5b97090fdd22421ba48959419d3aafd6.entity": {
+            "entityRef": "5b97090fdd22421ba48959419d3aafd6.entity",
+            "sortValue": 4
+          },
+          "5ec7affc47e84539838db7ccab555583.entity": {
+            "entityRef": "5ec7affc47e84539838db7ccab555583.entity",
+            "sortValue": 7
+          },
+          "b623bfa20b354597b1c7a11ca21a4233.entity": {
+            "entityRef": "b623bfa20b354597b1c7a11ca21a4233.entity",
+            "sortValue": 6
+          }
+        },
+        "rotation": [
+          0,
+          -93.2834793441784,
+          0
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          0,
+          0.36186373233795166,
+          0
+        ]
+      }
+    },
+    "created": "2015-05-08T12:46:41.883475+00:00",
+    "dataModelVersion": 2,
+    "deleted": false,
+    "hidden": false,
+    "id": "fe0779157a874ef9ba2d1d9467c1513e.entity",
+    "license": "CC0",
+    "modified": "2015-05-08T13:36:45.240546+00:00",
+    "name": "Sack",
+    "static": false,
+    "tags": {}
+  }
+}
