@@ -5,6 +5,10 @@
 <meta http-equiv="X-UA-Compatible" content="chrome=1">
 <title>Fuffr Boxing v2 - Goo Create</title>
 <script>
+
+// Fix for the "setVelocity" error in chrome
+PannerNode.prototype.setVelocity = AudioListener.prototype.setVelocity = function(){};
+
 // If you try to load a scene without a server, you're gonna have a bad time
 if (window.location.protocol==='file:') {
 	alert('You need to run this webpage on a server. Check the code for links and details.');
